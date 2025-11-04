@@ -1,5 +1,6 @@
 package com.zeezaglobal.prescription.Controller;
 
+import com.zeezaglobal.prescription.DTO.DrugDTO;
 import com.zeezaglobal.prescription.Entities.Drug;
 import com.zeezaglobal.prescription.Service.DrugService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,10 +23,14 @@ public class DrugController {
     }
 
     @GetMapping
-    public ResponseEntity<List<Drug>> getAllDrugs() {
+    public ResponseEntity<List<DrugDTO>> getAllDrugs() {
         return ResponseEntity.ok(drugService.getAllDrugs());
     }
-
+    //GET http://localhost:9090/api/drugs/search?q=para
+    @GetMapping("/search")
+    public List<DrugDTO> searchDrugs(@RequestParam("q") String query) {
+        return drugService.searchDrugs(query);
+    }
     @GetMapping("/{id}")
     public ResponseEntity<Optional<Drug>> getDrugById(@PathVariable Long id) {
         return ResponseEntity.ok(drugService.getDrugById(id));

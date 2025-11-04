@@ -1,5 +1,6 @@
 package com.zeezaglobal.prescription.Service;
 
+import com.zeezaglobal.prescription.DTO.DrugDTO;
 import com.zeezaglobal.prescription.Entities.Doctor;
 import com.zeezaglobal.prescription.Entities.Drug;
 import com.zeezaglobal.prescription.Repository.DoctorRepository;
@@ -20,8 +21,11 @@ public class DrugService {
         return drugRepository.save(drug);
     }
 
-    public List<Drug> getAllDrugs() {
-        return drugRepository.findAll();
+    public List<DrugDTO> getAllDrugs() {
+        List<Drug> drugs = drugRepository.findAll();
+        return drugs.stream()
+                .map(this::convertToDTO)
+                .toList();
     }
 
     public Optional<Drug> getDrugById(Long id) {
@@ -30,5 +34,22 @@ public class DrugService {
 
     public void deleteDrug(Long id) {
         drugRepository.deleteById(id);
+    }
+    public List<DrugDTO> searchDrugs(String keyword) {
+        List<Drug> drugs = drugRepository.findByNameContainingIgnoreCase(keyword);
+        return drugs.stream()
+                .map(this::convertToDTO)
+                .toList();
+    }
+    private DrugDTO convertToDTO(Drug drug) {
+        return new DrugDTO(
+                drug.getId(),
+                drug.getSerialNumber(),
+                drug.getType(),
+                drug.getName(),
+                drug.getDescription(),
+                drug.getType_name(),
+                drug.getForm()
+        );
     }
 }
