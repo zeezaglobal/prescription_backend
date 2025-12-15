@@ -9,9 +9,16 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
-        // Allow CORS for React app on localhost:3000
         registry.addMapping("/**")
-                .allowedOrigins("http://147.93.114.66:8081", "http://localhost:3000", "http://127.0.0.1:9090","https://indigorx.me")  // Add your React app URL
-                .allowedMethods("GET", "POST", "DELETE");
+                .allowedOrigins(
+                        "http://147.93.114.66:8081",
+                        "http://localhost:3000",
+                        "http://127.0.0.1:9090",
+                        "https://indigorx.me"
+                )
+                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH")
+                .allowedHeaders("*")  // This is crucial for preflight requests
+                .allowCredentials(true)  // If you're using cookies/auth tokens
+                .maxAge(3600);  // Cache preflight response for 1 hour
     }
 }
