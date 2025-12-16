@@ -49,7 +49,7 @@ public class StripeService {
         Optional<Doctor> doctor = doctorRepository.findById(doctorId);
         String customerId = null;
         if (doctor.isPresent()) {
-            customerId = doctor.get().getStripeUsername();
+            //customerId = doctor.get().getStripeUsername();
             // use customerId
         } else {
             // handle case where doctor is not found

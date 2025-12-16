@@ -1,6 +1,6 @@
 package com.zeezaglobal.prescription.Service;
 
-import com.zeezaglobal.prescription.DTO.PatientDTO;
+import com.zeezaglobal.prescription.DTO.*;
 import com.zeezaglobal.prescription.Entities.Drug;
 import com.zeezaglobal.prescription.Entities.Patient;
 import com.zeezaglobal.prescription.Repository.DrugRepository;
@@ -74,4 +74,7 @@ public class PatientService {
 
         return patients;
     }
+
+
+
 }

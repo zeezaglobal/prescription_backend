@@ -1,27 +1,19 @@
 package com.zeezaglobal.prescription.DTO;
 
-import com.zeezaglobal.prescription.Entities.Patient;
-import jakarta.persistence.CascadeType;
-import jakarta.persistence.OneToMany;
 import lombok.AllArgsConstructor;
-import lombok.Getter;
+import lombok.Data;
 import lombok.NoArgsConstructor;
-import lombok.Setter;
 
-import java.util.List;
-@Getter
-@Setter
+@Data
 @NoArgsConstructor
 @AllArgsConstructor
 public class DoctorDTO {
     private Long id;
-    private String firstName;
-    private String lastName;
+    private String name;
+    private String lastName; // Kept for backward compatibility
     private String specialization;
     private String licenseNumber;
-    private String hospitalName;
-    private String contactNumber;
-    private String stripeUsername;
-
-
+    private String hospitalName; // Kept for backward compatibility
+    private String contactNumber; // Maps to phone in entity
+    private String stripeUsername; // Kept for backward compatibility
 }

@@ -1,9 +1,7 @@
 package com.zeezaglobal.prescription.Controller;
 
 import com.zeezaglobal.prescription.DTO.PatientDTO;
-import com.zeezaglobal.prescription.Entities.Drug;
 import com.zeezaglobal.prescription.Entities.Patient;
-import com.zeezaglobal.prescription.Service.DrugService;
 import com.zeezaglobal.prescription.Service.PatientService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -14,6 +12,8 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Optional;
+
+
 
 @RestController
 @RequestMapping("/api/patients")
@@ -26,6 +26,7 @@ public class PatientsController {
     public ResponseEntity<List<Patient>> getAllPatients() {
         return ResponseEntity.ok(patientService.getAllPatients());
     }
+
     @GetMapping("/search")
     public ResponseEntity<?> searchPatients(
             @RequestParam(required = false) String firstName,

@@ -1,24 +1,31 @@
 package com.zeezaglobal.prescription.DTO;
 
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
 import java.util.List;
+
 @Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class PrescriptionRequestDTO {
-    private LocalDate prescribedDate;
-    private String remarks;
-    private Long doctorId;
     private Long patientId;
-    private List<PrescribedDrugDTO> prescribedDrugs;
+    private Long doctorId;
+    private LocalDate prescriptionDate;
+    private String specialInstructions;
+    private String diagnosis;
+    private List<MedicationDTO> medications;
 
     @Data
-    public static class PrescribedDrugDTO {
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class MedicationDTO {
         private Long drugId;
-        private double weight;
         private String dosage;
-        private int frequencyPerDay;
-        private int durationDays;
+        private String frequency;
+        private String duration;
         private String instructions;
     }
 }

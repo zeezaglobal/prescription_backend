@@ -1,16 +1,18 @@
 package com.zeezaglobal.prescription.DTO;
 
-import lombok.Getter;
-import lombok.Setter;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
-@Getter
-@Setter
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class UpdateDoctorDTO {
     private Long id;
     private String firstName;
     private String lastName;
     private String specialization;
     private String licenseNumber;
-    private String hospitalName;
-    private String contactNumber;
+    private String hospitalName; // Kept for backward compatibility, not mapped to new entity
+    private String contactNumber; // Maps to phone in entity
 }

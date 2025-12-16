@@ -21,6 +21,7 @@ import java.util.Optional;
 public class DoctorController {
     @Autowired
     private DoctorService doctorService;
+
     @Autowired
     private UserRepository userRepository;
 
@@ -33,16 +34,20 @@ public class DoctorController {
                 .map(doctor -> ResponseEntity.ok(mapToDTO(doctor))) // Map entity to DTO
                 .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(null)); // Return 404 if not found
     }
+
     private DoctorDTO mapToDTO(Doctor doctor) {
-        return new DoctorDTO(doctor.getId(),
-                doctor.getFirstName(),
-                doctor.getLastName(),
+        return new DoctorDTO(
+                doctor.getId(),
+                doctor.getName(),
+                null, // lastName - new entity doesn't have separate firstName/lastName, only 'name'
                 doctor.getSpecialization(),
                 doctor.getLicenseNumber(),
-                doctor.getHospitalName(),
-                doctor.getContactNumber(),
-                doctor.getStripeUsername());
+                null, // hospitalName - not in new entity, can be added if needed
+                doctor.getPhone(), // contactNumber mapped to phone
+                null  // stripeUsername - not in new entity, can be added if needed
+        );
     }
+
     @PostMapping("/update")
     public ResponseEntity<Doctor> updateDoctor(@RequestBody UpdateDoctorDTO updatedDoctor) {
         Logger logger = LoggerFactory.getLogger(this.getClass());
@@ -59,19 +64,25 @@ public class DoctorController {
             Doctor doctor = existingDoctor.get();
 
             // Log old and new values
-            logger.info("Old values - FirstName: {}, LastName: {}, Hospital: {}",
-                    doctor.getFirstName(), doctor.getLastName(), doctor.getHospitalName());
-            logger.info("New values - FirstName: {}, LastName: {}, Hospital: {}",
-                    updatedDoctor.getFirstName(), updatedDoctor.getLastName(), updatedDoctor.getHospitalName());
+            logger.info("Old values - Name: {}, Specialization: {}, License: {}",
+                    doctor.getName(), doctor.getSpecialization(), doctor.getLicenseNumber());
+            logger.info("New values - FirstName: {}, LastName: {}, Specialization: {}",
+                    updatedDoctor.getFirstName(), updatedDoctor.getLastName(), updatedDoctor.getSpecialization());
 
-            // Update fields
-            doctor.setFirstName(updatedDoctor.getFirstName());
-            doctor.setLastName(updatedDoctor.getLastName());
-            doctor.setHospitalName(updatedDoctor.getHospitalName());
+            // Update fields - combine firstName and lastName into name field
+            String fullName = updatedDoctor.getFirstName();
+            if (updatedDoctor.getLastName() != null && !updatedDoctor.getLastName().isEmpty()) {
+                fullName = updatedDoctor.getFirstName() + " " + updatedDoctor.getLastName();
+            }
+            doctor.setName(fullName);
+
             doctor.setLicenseNumber(updatedDoctor.getLicenseNumber());
-            doctor.setContactNumber(updatedDoctor.getContactNumber());
+            doctor.setPhone(updatedDoctor.getContactNumber()); // contactNumber mapped to phone
             doctor.setSpecialization(updatedDoctor.getSpecialization());
-            doctor.setValidated(0);
+
+            // Note: New entity uses status enum instead of validated integer
+            // Setting status to INACTIVE when not validated
+            doctor.setStatus(Doctor.DoctorStatus.INACTIVE);
 
             Doctor savedDoctor = doctorRepository.save(doctor);
             logger.info("Doctor updated successfully with ID: {}", savedDoctor.getId());
@@ -82,8 +93,4 @@ public class DoctorController {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(null);
         }
     }
-
-
-
-
 }
