@@ -3,24 +3,21 @@ package com.zeezaglobal.prescription.Entities;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.Period;
 
 @Entity
 @Table(name = "patients")
 @Data
+@EqualsAndHashCode(callSuper = true)
 @NoArgsConstructor
 @AllArgsConstructor
-@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
-public class Patient {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "password", "authorities", "accountNonExpired", "accountNonLocked", "credentialsNonExpired", "enabled"})
+public class Patient extends User {
 
     @Column(nullable = false)
     private String name;
@@ -49,21 +46,22 @@ public class Patient {
     @Column(length = 500)
     private String allergies;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "doctor_id")
+    @JsonIgnoreProperties({"patients", "password"})
+    private Doctor doctor;
 
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
+    @Column(name = "number_of_visit")
+    private Integer numberOfVisit = 0;
 
     @PrePersist
+    @Override
     protected void onCreate() {
-        createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
-    }
-
-    @PreUpdate
-    protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
+        super.onCreate();
+        setUserType(UserType.PATIENT);
+        if (numberOfVisit == null) {
+            numberOfVisit = 0;
+        }
     }
 
     // Calculate age from date of birth
@@ -73,5 +71,41 @@ public class Patient {
         }
         return Period.between(dateOfBirth, LocalDate.now()).getYears();
     }
-}
 
+    // Helper methods for backward compatibility
+    public String getFirstName() {
+        if (name != null && name.contains(" ")) {
+            return name.substring(0, name.indexOf(" "));
+        }
+        return name;
+    }
+
+    public String getLastName() {
+        if (name != null && name.contains(" ")) {
+            return name.substring(name.indexOf(" ") + 1);
+        }
+        return "";
+    }
+
+    public String getContactNumber() {
+        return phone;
+    }
+
+    public void setContactNumber(String contactNumber) {
+        this.phone = contactNumber;
+    }
+
+    public void setFirstName(String firstName) {
+        if (this.name == null) {
+            this.name = firstName;
+        } else {
+            String lastName = getLastName();
+            this.name = firstName + (lastName.isEmpty() ? "" : " " + lastName);
+        }
+    }
+
+    public void setLastName(String lastName) {
+        String firstName = getFirstName();
+        this.name = firstName + (lastName.isEmpty() ? "" : " " + lastName);
+    }
+}

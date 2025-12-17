@@ -3,22 +3,21 @@ package com.zeezaglobal.prescription.Entities;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
-import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "doctors")
 @Data
+@EqualsAndHashCode(callSuper = true)
 @NoArgsConstructor
 @AllArgsConstructor
-@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
-public class Doctor {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "password", "authorities", "accountNonExpired", "accountNonLocked", "credentialsNonExpired", "enabled"})
+public class Doctor extends User {
 
     @Column(nullable = false)
     private String name;
@@ -41,7 +40,6 @@ public class Doctor {
     @Column(length = 500)
     private String qualifications;
 
-    // Additional fields for backward compatibility with old system
     @Column(name = "hospital_name")
     private String hospitalName;
 
@@ -54,21 +52,15 @@ public class Doctor {
     @Enumerated(EnumType.STRING)
     private DoctorStatus status = DoctorStatus.ACTIVE;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
-
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
+    @OneToMany(mappedBy = "doctor", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonIgnoreProperties({"doctor", "password"})
+    private List<Patient> patients = new ArrayList<>();
 
     @PrePersist
+    @Override
     protected void onCreate() {
-        createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
-    }
-
-    @PreUpdate
-    protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
+        super.onCreate();
+        setUserType(UserType.DOCTOR);
     }
 
     // Helper methods for backward compatibility
@@ -92,6 +84,17 @@ public class Doctor {
 
     public void setContactNumber(String contactNumber) {
         this.phone = contactNumber;
+    }
+
+    // Helper methods for patient relationship
+    public void addPatient(Patient patient) {
+        patients.add(patient);
+        patient.setDoctor(this);
+    }
+
+    public void removePatient(Patient patient) {
+        patients.remove(patient);
+        patient.setDoctor(null);
     }
 
     public enum DoctorStatus {

@@ -10,6 +10,7 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -26,6 +27,7 @@ import java.util.Arrays;
 import java.util.List;
 
 @Configuration
+@EnableMethodSecurity
 public class SecurityConfig {
 
     private final JwtRequestFilter jwtRequestFilter;
@@ -109,11 +111,26 @@ public class SecurityConfig {
 
                 // Configure authorization
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/auth/register").permitAll()
+                        // Public endpoints
+                        .requestMatchers("/auth/doctor/register").permitAll()
+                        .requestMatchers("/auth/patient/register").permitAll()
                         .requestMatchers("/auth/login").permitAll()
+                        .requestMatchers("/auth/validate-token").permitAll()
+
+                        // Public API endpoints
                         .requestMatchers("/api/drugs/**").permitAll()
-                        .requestMatchers("/api/prescriptions/**").permitAll()
+
+                        // Doctor-only endpoints
+                        .requestMatchers("/api/doctors/**").hasRole("DOCTOR")
+                        .requestMatchers("/api/prescriptions/**").hasAnyRole("DOCTOR", "PATIENT")
+
+                        // Patient-only endpoints
+                        .requestMatchers("/api/patients/profile/**").hasRole("PATIENT")
+
+                        // Protected endpoints
                         .requestMatchers("/dashboard").authenticated()
+
+                        // All other requests require authentication
                         .anyRequest().authenticated()
                 )
 
