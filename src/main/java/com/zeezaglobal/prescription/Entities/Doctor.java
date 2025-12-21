@@ -19,19 +19,19 @@ import java.util.List;
 @JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "password", "authorities", "accountNonExpired", "accountNonLocked", "credentialsNonExpired", "enabled"})
 public class Doctor extends User {
 
-    @Column(nullable = false)
+    @Column(nullable = true)  // Changed to nullable for initial registration
     private String name;
 
     @Column(nullable = false, unique = true)
     private String email;
 
-    @Column(nullable = false, unique = true)
+    @Column(nullable = true, unique = true)  // Changed to nullable, will be set during profile completion
     private String licenseNumber;
 
-    @Column(nullable = false)
+    @Column(nullable = true)  // Changed to nullable for initial registration
     private String specialization;
 
-    @Column(nullable = false)
+    @Column(nullable = true)  // Changed to nullable for initial registration
     private String phone;
 
     @Column(length = 500)
@@ -95,6 +95,14 @@ public class Doctor extends User {
     public void removePatient(Patient patient) {
         patients.remove(patient);
         patient.setDoctor(null);
+    }
+
+    // Check if profile is complete
+    public boolean isProfileComplete() {
+        return name != null && !name.isEmpty()
+                && licenseNumber != null && !licenseNumber.startsWith("PENDING-")
+                && specialization != null && !specialization.isEmpty()
+                && phone != null && !phone.isEmpty();
     }
 
     public enum DoctorStatus {

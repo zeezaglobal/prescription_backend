@@ -57,40 +57,44 @@ public class AuthController {
     private PasswordEncoder passwordEncoder;
 
     @PostMapping("/doctor/register")
-    public ResponseEntity<Map<String, String>> registerDoctor(@RequestBody DoctorRegistrationDTO request) {
-        Map<String, String> response = new HashMap<>();
+    public ResponseEntity<Map<String, Object>> registerDoctor(@RequestBody DoctorRegistrationDTO request) {
+        Map<String, Object> response = new HashMap<>();
 
         try {
-            // Check if username already exists
-            if (userRepository.existsByUsername(request.getUsername())) {
-                response.put("message", "Username already exists!");
+            // Validate input
+            if (request.getEmail() == null || request.getEmail().isEmpty()) {
+                response.put("message", "Email is required");
                 return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
             }
 
-            // Check if email already exists
+            if (request.getPassword() == null || request.getPassword().isEmpty()) {
+                response.put("message", "Password is required");
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+            }
+
+            // Check if email already exists (email will be used as username initially)
+            if (userRepository.existsByUsername(request.getEmail())) {
+                response.put("message", "Email already exists!");
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+            }
+
             if (doctorRepository.existsByEmail(request.getEmail())) {
                 response.put("message", "Email already exists!");
                 return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
             }
 
-            // Check if license number already exists
-            if (doctorRepository.existsByLicenseNumber(request.getLicenseNumber())) {
-                response.put("message", "License number already exists!");
-                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
-            }
-
-            // Create new doctor
+            // Create new doctor with minimal info
             Doctor doctor = new Doctor();
-            doctor.setUsername(request.getUsername());
-            doctor.setPassword(passwordEncoder.encode(request.getPassword()));
-            doctor.setName(request.getName());
+            doctor.setUsername(request.getEmail()); // Use email as username
             doctor.setEmail(request.getEmail());
-            doctor.setLicenseNumber(request.getLicenseNumber());
-            doctor.setSpecialization(request.getSpecialization());
-            doctor.setPhone(request.getPhone());
-            doctor.setAddress(request.getAddress());
-            doctor.setQualifications(request.getQualifications());
-            doctor.setHospitalName(request.getHospitalName());
+            doctor.setPassword(passwordEncoder.encode(request.getPassword()));
+
+            // Set placeholder values for required fields
+            doctor.setName(""); // Will be filled in profile completion
+            doctor.setLicenseNumber("PENDING-" + System.currentTimeMillis()); // Temporary unique value
+            doctor.setSpecialization(""); // Will be filled in profile completion
+            doctor.setPhone(""); // Will be filled in profile completion
+
             doctor.setValidated(0);
             doctor.setStatus(Doctor.DoctorStatus.ACTIVE);
 
@@ -104,10 +108,23 @@ public class AuthController {
             }
 
             // Save doctor
-            doctorRepository.save(doctor);
+            Doctor savedDoctor = doctorRepository.save(doctor);
 
-            response.put("message", "Doctor registered successfully!");
-            response.put("userId", doctor.getId().toString());
+            // Generate JWT token immediately after registration
+            String token = jwtUtil.generateToken(savedDoctor.getUsername());
+
+            // Prepare response with token and user info
+            Map<String, Object> userMap = new HashMap<>();
+            userMap.put("id", savedDoctor.getId());
+            userMap.put("email", savedDoctor.getEmail());
+            userMap.put("username", savedDoctor.getUsername());
+            userMap.put("userType", "DOCTOR");
+            userMap.put("profileComplete", false); // Flag to indicate profile needs completion
+
+            response.put("message", "Doctor registered successfully! Please complete your profile.");
+            response.put("token", token);
+            response.put("user", userMap);
+
             return new ResponseEntity<>(response, HttpStatus.CREATED);
 
         } catch (Exception e) {
@@ -199,6 +216,15 @@ public class AuthController {
                 userMap.put("licenseNumber", doctor.getLicenseNumber());
                 userMap.put("isValidated", doctor.getValidated());
                 userMap.put("status", doctor.getStatus().toString());
+
+                // Check if profile is complete
+                boolean profileComplete = doctor.getName() != null && !doctor.getName().isEmpty()
+                        && !doctor.getLicenseNumber().startsWith("PENDING-")
+                        && doctor.getSpecialization() != null && !doctor.getSpecialization().isEmpty()
+                        && doctor.getPhone() != null && !doctor.getPhone().isEmpty();
+
+                userMap.put("profileComplete", profileComplete);
+
             } else if (user instanceof Patient) {
                 Patient patient = (Patient) user;
                 userMap.put("name", patient.getName());
@@ -249,7 +275,17 @@ public class AuthController {
                 if (user instanceof Doctor) {
                     Doctor doctor = (Doctor) user;
                     userMap.put("name", doctor.getName());
+                    userMap.put("email", doctor.getEmail());
                     userMap.put("isValidated", doctor.getValidated());
+
+                    // Check if profile is complete
+                    boolean profileComplete = doctor.getName() != null && !doctor.getName().isEmpty()
+                            && !doctor.getLicenseNumber().startsWith("PENDING-")
+                            && doctor.getSpecialization() != null && !doctor.getSpecialization().isEmpty()
+                            && doctor.getPhone() != null && !doctor.getPhone().isEmpty();
+
+                    userMap.put("profileComplete", profileComplete);
+
                 } else if (user instanceof Patient) {
                     Patient patient = (Patient) user;
                     userMap.put("name", patient.getName());
