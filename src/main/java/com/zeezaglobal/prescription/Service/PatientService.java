@@ -28,8 +28,8 @@ public class PatientService {
 
     private static final Logger logger = LoggerFactory.getLogger(PatientService.class);
 
-    public List<Patient> getAllPatients() {
-        return patientRepository.findAll();
+    public Page<Patient> getAllPatients(Pageable pageable) {
+        return patientRepository.findAll(pageable);
     }
 
     public Optional<Patient> getPatientById(Long id) {
@@ -40,6 +40,17 @@ public class PatientService {
         logger.info("Fetching patients for doctor ID: {}", doctorId);
 
         Page<Patient> patients = patientRepository.findByDoctorId(doctorId, pageable);
+
+        return patients.map(this::convertToDTO);
+    }
+
+    public Page<PatientDTO> getPatientsByAuthenticatedDoctor(String username, Pageable pageable) {
+        logger.info("Fetching patients for authenticated doctor: {}", username);
+
+        Doctor doctor = doctorRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("Doctor not found with username: " + username));
+
+        Page<Patient> patients = patientRepository.findByDoctorId(doctor.getId(), pageable);
 
         return patients.map(this::convertToDTO);
     }
@@ -76,6 +87,51 @@ public class PatientService {
 
         patient.setDoctor(doctor);
         patient.setNumberOfVisit(0);
+
+        // Set default username if not provided (use email or generate one)
+        if (patient.getUsername() == null || patient.getUsername().isEmpty()) {
+            if (patient.getEmail() != null && !patient.getEmail().isEmpty()) {
+                patient.setUsername(patient.getEmail());
+            } else {
+                // Generate a unique username based on phone and timestamp
+                patient.setUsername("patient_" + patient.getPhone() + "_" + System.currentTimeMillis());
+            }
+        }
+
+        // Set default password for patients (they don't need to login)
+        if (patient.getPassword() == null || patient.getPassword().isEmpty()) {
+            String defaultPassword = "Patient@123"; // Default password for all patients
+            patient.setPassword(defaultPassword); // Password will be encoded in User entity's @PrePersist
+        }
+
+        return patientRepository.save(patient);
+    }
+
+    public Patient createPatientForAuthenticatedDoctor(Patient patient, String username) {
+        logger.info("Creating patient for authenticated doctor: {}", username);
+
+        Doctor doctor = doctorRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("Doctor not found with username: " + username));
+
+        patient.setDoctor(doctor);
+        patient.setNumberOfVisit(0);
+
+        // Set default username if not provided (use email or generate one)
+        if (patient.getUsername() == null || patient.getUsername().isEmpty()) {
+            if (patient.getEmail() != null && !patient.getEmail().isEmpty()) {
+                patient.setUsername(patient.getEmail());
+            } else {
+                // Generate a unique username based on phone and timestamp
+                patient.setUsername("patient_" + patient.getPhone() + "_" + System.currentTimeMillis());
+            }
+        }
+
+        // Set default password for patients (they don't need to login)
+        // Using a standard default password that can be changed later if needed
+        if (patient.getPassword() == null || patient.getPassword().isEmpty()) {
+            String defaultPassword = "Patient@123"; // Default password for all patients
+            patient.setPassword(defaultPassword); // Password will be encoded in User entity's @PrePersist
+        }
 
         return patientRepository.save(patient);
     }
@@ -128,6 +184,17 @@ public class PatientService {
         logger.info("Searching patients for doctor ID: {} with term: {}", doctorId, searchTerm);
 
         Page<Patient> patients = patientRepository.searchPatientsByDoctor(doctorId, searchTerm, pageable);
+
+        return patients.map(this::convertToDTO);
+    }
+
+    public Page<PatientDTO> searchPatientsByAuthenticatedDoctor(String username, String searchTerm, Pageable pageable) {
+        logger.info("Searching patients for authenticated doctor: {} with term: {}", username, searchTerm);
+
+        Doctor doctor = doctorRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("Doctor not found with username: " + username));
+
+        Page<Patient> patients = patientRepository.searchPatientsByDoctor(doctor.getId(), searchTerm, pageable);
 
         return patients.map(this::convertToDTO);
     }

@@ -1,6 +1,7 @@
 package com.zeezaglobal.prescription.Repository;
 
 
+
 import com.zeezaglobal.prescription.Entities.Prescription;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -15,40 +16,37 @@ import java.util.List;
 @Repository
 public interface PrescriptionRepository extends JpaRepository<Prescription, Long> {
 
-    List<Prescription> findByPatientId(Long patientId);
-
+    // Find all prescriptions for a specific patient
     Page<Prescription> findByPatientId(Long patientId, Pageable pageable);
 
-    List<Prescription> findByDoctorId(Long doctorId);
-
+    // Find all prescriptions by a specific doctor
     Page<Prescription> findByDoctorId(Long doctorId, Pageable pageable);
 
-    List<Prescription> findByStatus(Prescription.PrescriptionStatus status);
+    // Find prescriptions for a patient by a specific doctor
+    Page<Prescription> findByPatientIdAndDoctorId(Long patientId, Long doctorId, Pageable pageable);
 
+    // Find prescriptions by status
     Page<Prescription> findByStatus(Prescription.PrescriptionStatus status, Pageable pageable);
 
-    @Query("SELECT p FROM Prescription p WHERE p.patient.id = :patientId AND p.status = :status")
-    List<Prescription> findByPatientIdAndStatus(@Param("patientId") Long patientId,
-                                                @Param("status") Prescription.PrescriptionStatus status);
+    // Find prescriptions by doctor and status
+    Page<Prescription> findByDoctorIdAndStatus(Long doctorId, Prescription.PrescriptionStatus status, Pageable pageable);
 
-    @Query("SELECT p FROM Prescription p WHERE p.prescriptionDate BETWEEN :startDate AND :endDate")
-    List<Prescription> findByDateRange(@Param("startDate") LocalDate startDate,
-                                       @Param("endDate") LocalDate endDate);
+    // Find active prescriptions for a patient
+    @Query("SELECT p FROM Prescription p WHERE p.patient.id = :patientId AND p.status = 'ACTIVE' AND p.validUntil >= :currentDate")
+    List<Prescription> findActivePrescriptionsByPatientId(@Param("patientId") Long patientId, @Param("currentDate") LocalDate currentDate);
 
-    @Query("SELECT p FROM Prescription p WHERE " +
-            "LOWER(p.patient.name) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR " +
-            "CAST(p.id AS string) LIKE CONCAT('%', :searchTerm, '%')")
-    Page<Prescription> searchPrescriptions(@Param("searchTerm") String searchTerm, Pageable pageable);
+    // Find prescriptions within a date range
+    @Query("SELECT p FROM Prescription p WHERE p.doctor.id = :doctorId AND p.prescriptionDate BETWEEN :startDate AND :endDate")
+    Page<Prescription> findByDoctorIdAndDateRange(
+            @Param("doctorId") Long doctorId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate,
+            Pageable pageable
+    );
 
-    @Query("SELECT p FROM Prescription p JOIN p.medications pm WHERE pm.drug.id = :drugId")
-    List<Prescription> findByDrugId(@Param("drugId") Long drugId);
+    // Count prescriptions by doctor
+    long countByDoctorId(Long doctorId);
 
-    @Query("SELECT COUNT(p) FROM Prescription p WHERE p.status = :status")
-    Long countByStatus(@Param("status") Prescription.PrescriptionStatus status);
-
-    @Query("SELECT COUNT(p) FROM Prescription p WHERE p.prescriptionDate >= :startDate")
-    Long countByDateAfter(@Param("startDate") LocalDate startDate);
-
-    @Query("SELECT p FROM Prescription p WHERE p.validUntil < :date AND p.status = 'ACTIVE'")
-    List<Prescription> findExpiredPrescriptions(@Param("date") LocalDate date);
+    // Count prescriptions by patient
+    long countByPatientId(Long patientId);
 }

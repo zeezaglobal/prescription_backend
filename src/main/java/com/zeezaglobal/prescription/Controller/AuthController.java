@@ -110,8 +110,12 @@ public class AuthController {
             // Save doctor
             Doctor savedDoctor = doctorRepository.save(doctor);
 
-            // Generate JWT token immediately after registration
-            String token = jwtUtil.generateToken(savedDoctor.getUsername());
+            // Generate JWT token with userId and role immediately after registration
+            String token = jwtUtil.generateToken(
+                    savedDoctor.getUsername(),
+                    savedDoctor.getId(),
+                    "DOCTOR"
+            );
 
             // Prepare response with token and user info
             Map<String, Object> userMap = new HashMap<>();
@@ -166,10 +170,10 @@ public class AuthController {
             patient.setAllergies(request.getAllergies());
 
             // Save patient
-            patientRepository.save(patient);
+            Patient savedPatient = patientRepository.save(patient);
 
             response.put("message", "Patient registered successfully!");
-            response.put("userId", patient.getId().toString());
+            response.put("userId", savedPatient.getId().toString());
             return new ResponseEntity<>(response, HttpStatus.CREATED);
 
         } catch (Exception e) {
@@ -194,12 +198,16 @@ public class AuthController {
             // Load user details
             final UserDetails userDetails = userDetailsService.loadUserByUsername(request.getUsername());
 
-            // Generate JWT token
-            String token = jwtUtil.generateToken(userDetails.getUsername());
-
             // Fetch user entity from DB
             User user = userRepository.findByUsername(request.getUsername())
                     .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+
+            // Generate JWT token with userId and role
+            String token = jwtUtil.generateToken(
+                    user.getUsername(),
+                    user.getId(),
+                    user.getUserType().toString()
+            );
 
             // Prepare user response
             Map<String, Object> userMap = new HashMap<>();

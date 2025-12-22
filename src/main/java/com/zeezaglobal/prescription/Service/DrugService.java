@@ -1,13 +1,22 @@
 package com.zeezaglobal.prescription.Service;
 
+
+
+
+import com.zeezaglobal.prescription.DTO.CreateDrugDTO;
+import com.zeezaglobal.prescription.DTO.DrugResponseDTO;
+import com.zeezaglobal.prescription.DTO.UpdateDrugDTO;
 import com.zeezaglobal.prescription.Entities.Drug;
 import com.zeezaglobal.prescription.Repository.DrugRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashMap;
 import java.util.List;
-import java.util.Optional;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -15,39 +24,57 @@ public class DrugService {
 
     private final DrugRepository drugRepository;
 
-    @Transactional(readOnly = true)
-    public List<Drug> getAllDrugs() {
-        return drugRepository.findAll();
+    @Transactional
+    public DrugResponseDTO createDrug(CreateDrugDTO dto) {
+        // Check if drug with same name already exists
+        if (drugRepository.existsByName(dto.getName())) {
+            throw new RuntimeException("Drug with name '" + dto.getName() + "' already exists");
+        }
+
+        Drug drug = new Drug();
+        drug.setName(dto.getName());
+        drug.setGenericName(dto.getGenericName());
+        drug.setCategory(dto.getCategory());
+        drug.setCommonDosages(dto.getCommonDosages() != null ? dto.getCommonDosages() : List.of());
+        drug.setDescription(dto.getDescription());
+        drug.setSideEffects(dto.getSideEffects());
+        drug.setContraindications(dto.getContraindications());
+        drug.setManufacturer(dto.getManufacturer());
+        drug.setStatus(Drug.DrugStatus.ACTIVE);
+
+        Drug savedDrug = drugRepository.save(drug);
+        return DrugResponseDTO.fromEntity(savedDrug);
     }
 
     @Transactional(readOnly = true)
-    public List<Drug> getAllActiveDrugs() {
-        return drugRepository.findAllActiveDrugs(Drug.DrugStatus.ACTIVE);
+    public DrugResponseDTO getDrugById(Long id) {
+        Drug drug = drugRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Drug not found with id: " + id));
+        return DrugResponseDTO.fromEntity(drug);
     }
 
     @Transactional(readOnly = true)
-    public Optional<Drug> getDrugById(Long id) {
-        return drugRepository.findById(id);
+    public Page<DrugResponseDTO> getAllDrugs(Pageable pageable) {
+        Page<Drug> drugs = drugRepository.findAll(pageable);
+        return drugs.map(DrugResponseDTO::fromEntity);
     }
 
     @Transactional(readOnly = true)
-    public Optional<Drug> getDrugByName(String name) {
-        return drugRepository.findByName(name);
+    public Page<DrugResponseDTO> searchDrugs(String searchTerm, Pageable pageable) {
+        Page<Drug> drugs = drugRepository.searchByNameOrGenericName(searchTerm, pageable);
+        return drugs.map(DrugResponseDTO::fromEntity);
     }
 
     @Transactional(readOnly = true)
-    public List<Drug> getDrugsByCategory(String category) {
-        return drugRepository.findByCategory(category);
+    public Page<DrugResponseDTO> getDrugsByCategory(String category, Pageable pageable) {
+        Page<Drug> drugs = drugRepository.findByCategory(category, pageable);
+        return drugs.map(DrugResponseDTO::fromEntity);
     }
 
     @Transactional(readOnly = true)
-    public List<Drug> searchDrugs(String searchTerm) {
-        return drugRepository.searchDrugs(searchTerm);
-    }
-
-    @Transactional(readOnly = true)
-    public List<Drug> searchActiveDrugs(String searchTerm) {
-        return drugRepository.searchActiveDrugs(searchTerm);
+    public Page<DrugResponseDTO> getActiveDrugs(Pageable pageable) {
+        Page<Drug> drugs = drugRepository.findByStatus(Drug.DrugStatus.ACTIVE, pageable);
+        return drugs.map(DrugResponseDTO::fromEntity);
     }
 
     @Transactional(readOnly = true)
@@ -56,50 +83,94 @@ public class DrugService {
     }
 
     @Transactional
-    public Drug createDrug(Drug drug) {
-        // Check if drug with same name already exists
-        if (drugRepository.findByName(drug.getName()).isPresent()) {
-            throw new IllegalArgumentException("Drug with name " + drug.getName() + " already exists");
+    public DrugResponseDTO updateDrug(Long id, UpdateDrugDTO dto) {
+        Drug drug = drugRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Drug not found with id: " + id));
+
+        // Update fields only if provided
+        if (dto.getName() != null && !dto.getName().equals(drug.getName())) {
+            if (drugRepository.existsByName(dto.getName())) {
+                throw new RuntimeException("Drug with name '" + dto.getName() + "' already exists");
+            }
+            drug.setName(dto.getName());
         }
-        return drugRepository.save(drug);
+
+        if (dto.getGenericName() != null) {
+            drug.setGenericName(dto.getGenericName());
+        }
+
+        if (dto.getCategory() != null) {
+            drug.setCategory(dto.getCategory());
+        }
+
+        if (dto.getCommonDosages() != null) {
+            drug.setCommonDosages(dto.getCommonDosages());
+        }
+
+        if (dto.getDescription() != null) {
+            drug.setDescription(dto.getDescription());
+        }
+
+        if (dto.getSideEffects() != null) {
+            drug.setSideEffects(dto.getSideEffects());
+        }
+
+        if (dto.getContraindications() != null) {
+            drug.setContraindications(dto.getContraindications());
+        }
+
+        if (dto.getManufacturer() != null) {
+            drug.setManufacturer(dto.getManufacturer());
+        }
+
+        Drug updatedDrug = drugRepository.save(drug);
+        return DrugResponseDTO.fromEntity(updatedDrug);
     }
 
     @Transactional
-    public Drug updateDrug(Long id, Drug drugDetails) {
+    public DrugResponseDTO updateDrugStatus(Long id, String statusString) {
         Drug drug = drugRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Drug not found with id: " + id));
+                .orElseThrow(() -> new RuntimeException("Drug not found with id: " + id));
 
-        // Check if name is being changed and new name already exists
-        if (!drug.getName().equals(drugDetails.getName()) &&
-                drugRepository.findByName(drugDetails.getName()).isPresent()) {
-            throw new IllegalArgumentException("Drug with name " + drugDetails.getName() + " already exists");
+        try {
+            Drug.DrugStatus status = Drug.DrugStatus.valueOf(statusString.toUpperCase());
+            drug.setStatus(status);
+        } catch (IllegalArgumentException e) {
+            throw new RuntimeException("Invalid status: " + statusString + ". Valid values: ACTIVE, INACTIVE, DISCONTINUED");
         }
 
-        drug.setName(drugDetails.getName());
-        drug.setGenericName(drugDetails.getGenericName());
-        drug.setCategory(drugDetails.getCategory());
-        drug.setCommonDosages(drugDetails.getCommonDosages());
-        drug.setDescription(drugDetails.getDescription());
-        drug.setSideEffects(drugDetails.getSideEffects());
-        drug.setContraindications(drugDetails.getContraindications());
-        drug.setManufacturer(drugDetails.getManufacturer());
-        drug.setStatus(drugDetails.getStatus());
-
-        return drugRepository.save(drug);
+        Drug updatedDrug = drugRepository.save(drug);
+        return DrugResponseDTO.fromEntity(updatedDrug);
     }
 
     @Transactional
     public void deleteDrug(Long id) {
         Drug drug = drugRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Drug not found with id: " + id));
-        drugRepository.delete(drug);
+                .orElseThrow(() -> new RuntimeException("Drug not found with id: " + id));
+
+        // Instead of hard delete, mark as discontinued
+        drug.setStatus(Drug.DrugStatus.DISCONTINUED);
+        drugRepository.save(drug);
     }
 
-    @Transactional
-    public Drug updateDrugStatus(Long id, Drug.DrugStatus status) {
-        Drug drug = drugRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Drug not found with id: " + id));
-        drug.setStatus(status);
-        return drugRepository.save(drug);
+    @Transactional(readOnly = true)
+    public Map<String, Object> getDrugStatistics() {
+        Map<String, Object> stats = new HashMap<>();
+
+        long totalDrugs = drugRepository.count();
+        long activeDrugs = drugRepository.findByStatus(Drug.DrugStatus.ACTIVE).size();
+        long inactiveDrugs = drugRepository.findByStatus(Drug.DrugStatus.INACTIVE).size();
+        long discontinuedDrugs = drugRepository.findByStatus(Drug.DrugStatus.DISCONTINUED).size();
+
+        List<String> categories = drugRepository.findAllCategories();
+
+        stats.put("totalDrugs", totalDrugs);
+        stats.put("activeDrugs", activeDrugs);
+        stats.put("inactiveDrugs", inactiveDrugs);
+        stats.put("discontinuedDrugs", discontinuedDrugs);
+        stats.put("totalCategories", categories.size());
+        stats.put("categories", categories);
+
+        return stats;
     }
 }

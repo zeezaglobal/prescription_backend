@@ -35,6 +35,43 @@ public class JwtUtil {
         return extractClaim(token, Claims::getSubject);
     }
 
+    // Extract email from token (same as username in most cases)
+    public String extractEmail(String token) {
+        return extractClaim(token, Claims::getSubject);
+    }
+
+    // Extract user ID from token
+    public Long extractUserId(String token) {
+        Claims claims = extractAllClaims(token);
+
+
+
+        Object userIdObj = claims.get("userId");
+        if (userIdObj == null) {
+            return null;
+        }
+        if (userIdObj instanceof Integer) {
+            return ((Integer) userIdObj).longValue();
+        }
+        if (userIdObj instanceof Long) {
+            return (Long) userIdObj;
+        }
+        if (userIdObj instanceof String) {
+            return Long.parseLong((String) userIdObj);
+        }
+        return null;
+    }
+
+    // Extract role from token
+    public String extractRole(String token) {
+        Claims claims = extractAllClaims(token);
+        Object roleObj = claims.get("role");
+        if (roleObj == null) {
+            return null;
+        }
+        return roleObj.toString();
+    }
+
     // Extract expiration date from token
     public Date extractExpiration(String token) {
         return extractClaim(token, Claims::getExpiration);
@@ -60,6 +97,26 @@ public class JwtUtil {
         return extractExpiration(token).before(new Date());
     }
 
+    // Generate token for user with userId claim
+    public String generateToken(String email, Long userId) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("userId", userId);
+        return createToken(claims, email);
+    }
+
+    // Generate token for user with userId and role claims
+    public String generateToken(String email, Long userId, String role) {
+
+
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("userId", userId);
+        claims.put("role", role);
+
+       
+
+        return createToken(claims, email);
+    }
+
     // Generate token for user
     public String generateToken(String username) {
         Map<String, Object> claims = new HashMap<>();
@@ -83,8 +140,14 @@ public class JwtUtil {
                 .compact();
     }
 
+    // Validate token against email
+    public Boolean validateToken(String token, String email) {
+        final String extractedEmail = extractEmail(token);
+        return (extractedEmail.equals(email) && !isTokenExpired(token));
+    }
+
     // Validate token against username
-    public Boolean validateToken(String token, String username) {
+    public Boolean validateTokenByUsername(String token, String username) {
         final String extractedUsername = extractUsername(token);
         return (extractedUsername.equals(username) && !isTokenExpired(token));
     }

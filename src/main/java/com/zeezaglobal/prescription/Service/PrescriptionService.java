@@ -1,10 +1,14 @@
-package com.zeezaglobal.prescription.Service;
+package com.zeezaglobal.prescription.Services;
 
 
-import com.zeezaglobal.prescription.DTO.PrescriptionRequestDTO;
+import com.zeezaglobal.prescription.DTO.CreatePrescriptionDTO;
 import com.zeezaglobal.prescription.DTO.PrescriptionResponseDTO;
+import com.zeezaglobal.prescription.DTO.UpdatePrescriptionStatusDTO;
 import com.zeezaglobal.prescription.Entities.*;
-import com.zeezaglobal.prescription.Repository.*;
+import com.zeezaglobal.prescription.Repository.DoctorRepository;
+import com.zeezaglobal.prescription.Repository.DrugRepository;
+import com.zeezaglobal.prescription.Repository.PatientRepository;
+import com.zeezaglobal.prescription.Repository.PrescriptionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -12,274 +16,226 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class PrescriptionService {
 
     private final PrescriptionRepository prescriptionRepository;
-    private final PrescriptionMedicationRepository prescriptionMedicationRepository;
     private final PatientRepository patientRepository;
     private final DoctorRepository doctorRepository;
     private final DrugRepository drugRepository;
 
-    @Transactional(readOnly = true)
-    public List<PrescriptionResponseDTO> getAllPrescriptions() {
-        return prescriptionRepository.findAll().stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
-    }
-
-    @Transactional(readOnly = true)
-    public Page<PrescriptionResponseDTO> getAllPrescriptionsPaged(Pageable pageable) {
-        return prescriptionRepository.findAll(pageable)
-                .map(this::convertToDTO);
-    }
-
-    @Transactional(readOnly = true)
-    public PrescriptionResponseDTO getPrescriptionById(Long id) {
-        Prescription prescription = prescriptionRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Prescription not found with id: " + id));
-        return convertToDTO(prescription);
-    }
-
-    @Transactional(readOnly = true)
-    public List<PrescriptionResponseDTO> getPrescriptionsByPatientId(Long patientId) {
-        return prescriptionRepository.findByPatientId(patientId).stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
-    }
-
-    @Transactional(readOnly = true)
-    public Page<PrescriptionResponseDTO> getPrescriptionsByPatientIdPaged(Long patientId, Pageable pageable) {
-        return prescriptionRepository.findByPatientId(patientId, pageable)
-                .map(this::convertToDTO);
-    }
-
-    @Transactional(readOnly = true)
-    public List<PrescriptionResponseDTO> getPrescriptionsByDoctorId(Long doctorId) {
-        return prescriptionRepository.findByDoctorId(doctorId).stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
-    }
-
-    @Transactional(readOnly = true)
-    public Page<PrescriptionResponseDTO> getPrescriptionsByDoctorIdPaged(Long doctorId, Pageable pageable) {
-        return prescriptionRepository.findByDoctorId(doctorId, pageable)
-                .map(this::convertToDTO);
-    }
-
-    @Transactional(readOnly = true)
-    public List<PrescriptionResponseDTO> getPrescriptionsByStatus(Prescription.PrescriptionStatus status) {
-        return prescriptionRepository.findByStatus(status).stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
-    }
-
-    @Transactional(readOnly = true)
-    public Page<PrescriptionResponseDTO> searchPrescriptions(String searchTerm, Pageable pageable) {
-        return prescriptionRepository.searchPrescriptions(searchTerm, pageable)
-                .map(this::convertToDTO);
-    }
-
-    @Transactional(readOnly = true)
-    public List<PrescriptionResponseDTO> getPrescriptionsByDateRange(LocalDate startDate, LocalDate endDate) {
-        return prescriptionRepository.findByDateRange(startDate, endDate).stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
-    }
-
     @Transactional
-    public PrescriptionResponseDTO createPrescription(PrescriptionRequestDTO requestDTO) {
-        // Validate patient
-        Patient patient = patientRepository.findById(requestDTO.getPatientId())
-                .orElseThrow(() -> new IllegalArgumentException("Patient not found with id: " + requestDTO.getPatientId()));
-
+    public PrescriptionResponseDTO createPrescription(CreatePrescriptionDTO dto, Long doctorId) {
         // Validate doctor
-        Doctor doctor = doctorRepository.findById(requestDTO.getDoctorId())
-                .orElseThrow(() -> new IllegalArgumentException("Doctor not found with id: " + requestDTO.getDoctorId()));
+        Doctor doctor = doctorRepository.findById(doctorId)
+                .orElseThrow(() -> new RuntimeException("Doctor not found with id: " + doctorId));
+
+        // Validate patient
+        Patient patient = patientRepository.findById(dto.getPatientId())
+                .orElseThrow(() -> new RuntimeException("Patient not found with id: " + dto.getPatientId()));
 
         // Create prescription
         Prescription prescription = new Prescription();
-        prescription.setPatient(patient);
         prescription.setDoctor(doctor);
-        prescription.setPrescriptionDate(requestDTO.getPrescriptionDate() != null ?
-                requestDTO.getPrescriptionDate() : LocalDate.now());
-        prescription.setSpecialInstructions(requestDTO.getSpecialInstructions());
-        prescription.setDiagnosis(requestDTO.getDiagnosis());
+        prescription.setPatient(patient);
+        prescription.setPrescriptionDate(dto.getPrescriptionDate() != null ? dto.getPrescriptionDate() : LocalDate.now());
+        prescription.setSpecialInstructions(dto.getSpecialInstructions());
+        prescription.setDiagnosis(dto.getDiagnosis());
         prescription.setStatus(Prescription.PrescriptionStatus.ACTIVE);
 
-        // Save prescription first to get ID
-        prescription = prescriptionRepository.save(prescription);
+        // Set valid until date
+        if (dto.getValidUntil() != null) {
+            prescription.setValidUntil(dto.getValidUntil());
+        } else {
+            prescription.setValidUntil(prescription.getPrescriptionDate().plusDays(30));
+        }
 
-        // Add medications
-        for (PrescriptionRequestDTO.MedicationDTO medDTO : requestDTO.getMedications()) {
+        // Create medications
+        List<PrescriptionMedication> medications = new ArrayList<>();
+        for (CreatePrescriptionDTO.PrescriptionMedicationDTO medDTO : dto.getMedications()) {
             Drug drug = drugRepository.findById(medDTO.getDrugId())
-                    .orElseThrow(() -> new IllegalArgumentException("Drug not found with id: " + medDTO.getDrugId()));
+                    .orElseThrow(() -> new RuntimeException("Drug not found with id: " + medDTO.getDrugId()));
 
             PrescriptionMedication medication = new PrescriptionMedication();
-            medication.setPrescription(prescription);
             medication.setDrug(drug);
             medication.setDosage(medDTO.getDosage());
             medication.setFrequency(medDTO.getFrequency());
             medication.setDuration(medDTO.getDuration());
             medication.setInstructions(medDTO.getInstructions());
+            medication.setPrescription(prescription);
 
-            prescription.addMedication(medication);
+            medications.add(medication);
         }
 
-        // Save with medications
-        prescription = prescriptionRepository.save(prescription);
+        prescription.setMedications(medications);
 
-        return convertToDTO(prescription);
+        // Save prescription
+        Prescription savedPrescription = prescriptionRepository.save(prescription);
+
+        return PrescriptionResponseDTO.fromEntity(savedPrescription);
+    }
+    @Transactional(readOnly = true)
+    public PrescriptionResponseDTO getPrescriptionByIdForPatient(Long prescriptionId, Long patientId) {
+        Prescription prescription = prescriptionRepository.findById(prescriptionId)
+                .orElseThrow(() -> new RuntimeException("Prescription not found with id: " + prescriptionId));
+
+        // Verify that the prescription belongs to this patient
+        if (!prescription.getPatient().getId().equals(patientId)) {
+            throw new RuntimeException("Unauthorized: Prescription does not belong to this patient");
+        }
+
+        return PrescriptionResponseDTO.fromEntity(prescription);
+    }
+
+    /**
+     * Get all prescriptions for a patient (without doctor filter)
+     */
+    @Transactional(readOnly = true)
+    public Page<PrescriptionResponseDTO> getPrescriptionsByPatientId(Long patientId, Pageable pageable) {
+        // Verify patient exists
+        patientRepository.findById(patientId)
+                .orElseThrow(() -> new RuntimeException("Patient not found with id: " + patientId));
+
+        Page<Prescription> prescriptions = prescriptionRepository.findByPatientId(patientId, pageable);
+        return prescriptions.map(PrescriptionResponseDTO::fromEntity);
+    }
+
+    /**
+     * Get active prescriptions for a patient (without doctor filter)
+     */
+    @Transactional(readOnly = true)
+    public List<PrescriptionResponseDTO> getActivePrescriptionsForPatientOnly(Long patientId) {
+        // Verify patient exists
+        patientRepository.findById(patientId)
+                .orElseThrow(() -> new RuntimeException("Patient not found with id: " + patientId));
+
+        List<Prescription> activePrescriptions = prescriptionRepository
+                .findActivePrescriptionsByPatientId(patientId, LocalDate.now());
+
+        return activePrescriptions.stream()
+                .map(PrescriptionResponseDTO::fromEntity)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public PrescriptionResponseDTO getPrescriptionById(Long id, Long doctorId) {
+        Prescription prescription = prescriptionRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Prescription not found with id: " + id));
+
+        // Verify that the prescription belongs to this doctor
+        if (!prescription.getDoctor().getId().equals(doctorId)) {
+            throw new RuntimeException("Unauthorized: Prescription does not belong to this doctor");
+        }
+
+        return PrescriptionResponseDTO.fromEntity(prescription);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<PrescriptionResponseDTO> getAllPrescriptionsByDoctor(Long doctorId, Pageable pageable) {
+        Page<Prescription> prescriptions = prescriptionRepository.findByDoctorId(doctorId, pageable);
+        return prescriptions.map(PrescriptionResponseDTO::fromEntity);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<PrescriptionResponseDTO> getPrescriptionsByPatient(Long patientId, Long doctorId, Pageable pageable) {
+        // Verify doctor exists
+        doctorRepository.findById(doctorId)
+                .orElseThrow(() -> new RuntimeException("Doctor not found with id: " + doctorId));
+
+        // Verify patient exists
+        patientRepository.findById(patientId)
+                .orElseThrow(() -> new RuntimeException("Patient not found with id: " + patientId));
+
+        // Get prescriptions for this patient by this doctor
+        Page<Prescription> prescriptions = prescriptionRepository.findByPatientIdAndDoctorId(patientId, doctorId, pageable);
+        return prescriptions.map(PrescriptionResponseDTO::fromEntity);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<PrescriptionResponseDTO> getPrescriptionsByStatus(
+            Long doctorId,
+            String status,
+            Pageable pageable) {
+
+        Prescription.PrescriptionStatus prescriptionStatus;
+        try {
+            prescriptionStatus = Prescription.PrescriptionStatus.valueOf(status.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new RuntimeException("Invalid status: " + status);
+        }
+
+        Page<Prescription> prescriptions = prescriptionRepository.findByDoctorIdAndStatus(doctorId, prescriptionStatus, pageable);
+        return prescriptions.map(PrescriptionResponseDTO::fromEntity);
     }
 
     @Transactional
-    public PrescriptionResponseDTO updatePrescription(Long id, PrescriptionRequestDTO requestDTO) {
-        Prescription prescription = prescriptionRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Prescription not found with id: " + id));
+    public PrescriptionResponseDTO updatePrescriptionStatus(
+            Long prescriptionId,
+            UpdatePrescriptionStatusDTO dto,
+            Long doctorId) {
 
-        // Update basic fields
-        prescription.setSpecialInstructions(requestDTO.getSpecialInstructions());
-        prescription.setDiagnosis(requestDTO.getDiagnosis());
+        Prescription prescription = prescriptionRepository.findById(prescriptionId)
+                .orElseThrow(() -> new RuntimeException("Prescription not found with id: " + prescriptionId));
 
-        if (requestDTO.getPrescriptionDate() != null) {
-            prescription.setPrescriptionDate(requestDTO.getPrescriptionDate());
+        // Verify that the prescription belongs to this doctor
+        if (!prescription.getDoctor().getId().equals(doctorId)) {
+            throw new RuntimeException("Unauthorized: Prescription does not belong to this doctor");
         }
 
-        // Update medications if provided
-        if (requestDTO.getMedications() != null && !requestDTO.getMedications().isEmpty()) {
-            // Remove existing medications
-            prescription.getMedications().clear();
-            prescriptionRepository.save(prescription);
-
-            // Add new medications
-            for (PrescriptionRequestDTO.MedicationDTO medDTO : requestDTO.getMedications()) {
-                Drug drug = drugRepository.findById(medDTO.getDrugId())
-                        .orElseThrow(() -> new IllegalArgumentException("Drug not found with id: " + medDTO.getDrugId()));
-
-                PrescriptionMedication medication = new PrescriptionMedication();
-                medication.setPrescription(prescription);
-                medication.setDrug(drug);
-                medication.setDosage(medDTO.getDosage());
-                medication.setFrequency(medDTO.getFrequency());
-                medication.setDuration(medDTO.getDuration());
-                medication.setInstructions(medDTO.getInstructions());
-
-                prescription.addMedication(medication);
-            }
+        // Update status
+        try {
+            Prescription.PrescriptionStatus newStatus = Prescription.PrescriptionStatus.valueOf(dto.getStatus().toUpperCase());
+            prescription.setStatus(newStatus);
+        } catch (IllegalArgumentException e) {
+            throw new RuntimeException("Invalid status: " + dto.getStatus());
         }
 
-        prescription = prescriptionRepository.save(prescription);
-        return convertToDTO(prescription);
+        Prescription updatedPrescription = prescriptionRepository.save(prescription);
+        return PrescriptionResponseDTO.fromEntity(updatedPrescription);
     }
 
     @Transactional
-    public PrescriptionResponseDTO updatePrescriptionStatus(Long id, Prescription.PrescriptionStatus status) {
-        Prescription prescription = prescriptionRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Prescription not found with id: " + id));
+    public void deletePrescription(Long prescriptionId, Long doctorId) {
+        Prescription prescription = prescriptionRepository.findById(prescriptionId)
+                .orElseThrow(() -> new RuntimeException("Prescription not found with id: " + prescriptionId));
 
-        prescription.setStatus(status);
-        prescription = prescriptionRepository.save(prescription);
+        // Verify that the prescription belongs to this doctor
+        if (!prescription.getDoctor().getId().equals(doctorId)) {
+            throw new RuntimeException("Unauthorized: Prescription does not belong to this doctor");
+        }
 
-        return convertToDTO(prescription);
-    }
-
-    @Transactional
-    public void deletePrescription(Long id) {
-        Prescription prescription = prescriptionRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Prescription not found with id: " + id));
         prescriptionRepository.delete(prescription);
     }
 
     @Transactional(readOnly = true)
-    public Long getTotalPrescriptions() {
-        return prescriptionRepository.count();
+    public List<PrescriptionResponseDTO> getActivePrescriptionsForPatient(Long patientId, Long doctorId) {
+        // Verify doctor and patient exist
+        doctorRepository.findById(doctorId)
+                .orElseThrow(() -> new RuntimeException("Doctor not found with id: " + doctorId));
+
+        patientRepository.findById(patientId)
+                .orElseThrow(() -> new RuntimeException("Patient not found with id: " + patientId));
+
+        List<Prescription> activePrescriptions = prescriptionRepository
+                .findActivePrescriptionsByPatientId(patientId, LocalDate.now());
+
+        return activePrescriptions.stream()
+                .filter(p -> p.getDoctor().getId().equals(doctorId))
+                .map(PrescriptionResponseDTO::fromEntity)
+                .toList();
     }
 
     @Transactional(readOnly = true)
-    public Long getActivePrescriptions() {
-        return prescriptionRepository.countByStatus(Prescription.PrescriptionStatus.ACTIVE);
+    public long getTotalPrescriptionsByDoctor(Long doctorId) {
+        return prescriptionRepository.countByDoctorId(doctorId);
     }
 
     @Transactional(readOnly = true)
-    public Long getPendingPrescriptions() {
-        return prescriptionRepository.countByStatus(Prescription.PrescriptionStatus.PENDING);
-    }
-
-    @Transactional(readOnly = true)
-    public Long getPrescriptionsThisMonth() {
-        LocalDate startOfMonth = LocalDate.now().withDayOfMonth(1);
-        return prescriptionRepository.countByDateAfter(startOfMonth);
-    }
-
-    @Transactional
-    public void updateExpiredPrescriptions() {
-        List<Prescription> expiredPrescriptions = prescriptionRepository
-                .findExpiredPrescriptions(LocalDate.now());
-
-        for (Prescription prescription : expiredPrescriptions) {
-            prescription.setStatus(Prescription.PrescriptionStatus.EXPIRED);
-        }
-
-        prescriptionRepository.saveAll(expiredPrescriptions);
-    }
-
-    // Conversion method
-    private PrescriptionResponseDTO convertToDTO(Prescription prescription) {
-        PrescriptionResponseDTO dto = new PrescriptionResponseDTO();
-        dto.setId(prescription.getId());
-        dto.setPrescriptionDate(prescription.getPrescriptionDate());
-        dto.setStatus(prescription.getStatus());
-        dto.setSpecialInstructions(prescription.getSpecialInstructions());
-        dto.setValidUntil(prescription.getValidUntil());
-        dto.setDiagnosis(prescription.getDiagnosis());
-        dto.setCreatedAt(prescription.getCreatedAt());
-        dto.setUpdatedAt(prescription.getUpdatedAt());
-
-        // Patient summary
-        Patient patient = prescription.getPatient();
-        PrescriptionResponseDTO.PatientSummary patientSummary = new PrescriptionResponseDTO.PatientSummary();
-        patientSummary.setId(patient.getId());
-        patientSummary.setName(patient.getName());
-        patientSummary.setAge(patient.getAge());
-        patientSummary.setPhone(patient.getPhone());
-        dto.setPatient(patientSummary);
-
-        // Doctor summary
-        Doctor doctor = prescription.getDoctor();
-        PrescriptionResponseDTO.DoctorSummary doctorSummary = new PrescriptionResponseDTO.DoctorSummary();
-        doctorSummary.setId(doctor.getId());
-        doctorSummary.setName(doctor.getFirstName());
-        doctorSummary.setLicenseNumber(doctor.getLicenseNumber());
-        doctorSummary.setSpecialization(doctor.getSpecialization());
-        dto.setDoctor(doctorSummary);
-
-        // Medications
-        List<PrescriptionResponseDTO.MedicationDetail> medications = prescription.getMedications().stream()
-                .map(med -> {
-                    PrescriptionResponseDTO.MedicationDetail medDetail = new PrescriptionResponseDTO.MedicationDetail();
-                    medDetail.setId(med.getId());
-                    medDetail.setDosage(med.getDosage());
-                    medDetail.setFrequency(med.getFrequency());
-                    medDetail.setDuration(med.getDuration());
-                    medDetail.setInstructions(med.getInstructions());
-
-                    Drug drug = med.getDrug();
-                    PrescriptionResponseDTO.DrugInfo drugInfo = new PrescriptionResponseDTO.DrugInfo();
-                    drugInfo.setId(drug.getId());
-                    drugInfo.setName(drug.getName());
-                    drugInfo.setGenericName(drug.getGenericName());
-                    drugInfo.setCategory(drug.getCategory());
-                    medDetail.setDrug(drugInfo);
-
-                    return medDetail;
-                })
-                .collect(Collectors.toList());
-        dto.setMedications(medications);
-
-        return dto;
+    public long getTotalPrescriptionsForPatient(Long patientId) {
+        return prescriptionRepository.countByPatientId(patientId);
     }
 }

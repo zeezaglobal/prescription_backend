@@ -11,6 +11,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -27,9 +28,24 @@ public class PatientsController {
 
     @GetMapping
     @PreAuthorize("hasRole('DOCTOR')")
-    public ResponseEntity<List<Patient>> getAllPatients() {
-        List<Patient> patients = patientService.getAllPatients();
-        return ResponseEntity.ok(patients);
+    public ResponseEntity<Map<String, Object>> getAllPatients(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "name") String sortBy,
+            @RequestParam(defaultValue = "asc") String sortDirection) {
+
+        Sort.Direction direction = sortDirection.equalsIgnoreCase("desc") ? Sort.Direction.DESC : Sort.Direction.ASC;
+        Pageable pageable = PageRequest.of(page, size, Sort.by(direction, sortBy));
+
+        Page<Patient> patientsPage = patientService.getAllPatients(pageable);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("patients", patientsPage.getContent());
+        response.put("currentPage", patientsPage.getNumber());
+        response.put("totalItems", patientsPage.getTotalElements());
+        response.put("totalPages", patientsPage.getTotalPages());
+
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/{id}")
@@ -44,6 +60,31 @@ public class PatientsController {
             response.put("message", "Patient not found");
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
         }
+    }
+
+    @GetMapping("/doctor")
+    @PreAuthorize("hasRole('DOCTOR')")
+    public ResponseEntity<Map<String, Object>> getPatientsByDoctor(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "name") String sortBy,
+            @RequestParam(defaultValue = "asc") String sortDirection,
+            Authentication authentication) {
+
+        Sort.Direction direction = sortDirection.equalsIgnoreCase("desc") ? Sort.Direction.DESC : Sort.Direction.ASC;
+        Pageable pageable = PageRequest.of(page, size, Sort.by(direction, sortBy));
+
+        // Extract doctor username from JWT token
+        String username = authentication.getName();
+        Page<PatientDTO> patientsPage = patientService.getPatientsByAuthenticatedDoctor(username, pageable);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("patients", patientsPage.getContent());
+        response.put("currentPage", patientsPage.getNumber());
+        response.put("totalItems", patientsPage.getTotalElements());
+        response.put("totalPages", patientsPage.getTotalPages());
+
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/doctor/{doctorId}")
@@ -71,45 +112,31 @@ public class PatientsController {
 
     @PostMapping
     @PreAuthorize("hasRole('DOCTOR')")
-    public ResponseEntity<Map<String, Object>> createPatient(@RequestBody Patient patient) {
+    public ResponseEntity<Map<String, Object>> createPatient(
+            @RequestBody Patient patient,
+            Authentication authentication) {
         try {
-            Patient savedPatient = patientService.savePatient(patient);
+            // Extract doctor ID from the authenticated user
+            String username = authentication.getName();
+            Patient savedPatient = patientService.createPatientForAuthenticatedDoctor(patient, username);
 
             Map<String, Object> response = new HashMap<>();
             response.put("message", "Patient created successfully");
             response.put("patient", savedPatient);
 
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
-        } catch (Exception e) {
-            Map<String, Object> response = new HashMap<>();
-            response.put("message", "Error creating patient: " + e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
-        }
-    }
-
-    @PostMapping("/doctor/{doctorId}")
-    @PreAuthorize("hasRole('DOCTOR')")
-    public ResponseEntity<Map<String, Object>> createPatientForDoctor(
-            @PathVariable Long doctorId,
-            @RequestBody Patient patient) {
-        try {
-            Patient savedPatient = patientService.createPatientForDoctor(patient, doctorId);
-
-            Map<String, Object> response = new HashMap<>();
-            response.put("message", "Patient created successfully for doctor");
-            response.put("patient", savedPatient);
-
-            return ResponseEntity.status(HttpStatus.CREATED).body(response);
         } catch (RuntimeException e) {
             Map<String, Object> response = new HashMap<>();
             response.put("message", e.getMessage());
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
         } catch (Exception e) {
             Map<String, Object> response = new HashMap<>();
             response.put("message", "Error creating patient: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
+
+
 
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('DOCTOR')")
@@ -200,9 +227,38 @@ public class PatientsController {
         }
     }
 
-    @GetMapping("/search/doctor/{doctorId}")
+    @GetMapping("/search/doctor")
     @PreAuthorize("hasRole('DOCTOR')")
     public ResponseEntity<Map<String, Object>> searchPatientsByDoctor(
+            @RequestParam String searchTerm,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            Authentication authentication) {
+
+        try {
+            // Extract doctor username from JWT token
+            String username = authentication.getName();
+
+            Pageable pageable = PageRequest.of(page, size);
+            Page<PatientDTO> patientsPage = patientService.searchPatientsByAuthenticatedDoctor(username, searchTerm, pageable);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("patients", patientsPage.getContent());
+            response.put("currentPage", patientsPage.getNumber());
+            response.put("totalItems", patientsPage.getTotalElements());
+            response.put("totalPages", patientsPage.getTotalPages());
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> response = new HashMap<>();
+            response.put("message", "Error searching patients: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
+    @GetMapping("/search/doctor/{doctorId}")
+    @PreAuthorize("hasRole('DOCTOR')")
+    public ResponseEntity<Map<String, Object>> searchPatientsByDoctorId(
             @PathVariable Long doctorId,
             @RequestParam String searchTerm,
             @RequestParam(defaultValue = "0") int page,
