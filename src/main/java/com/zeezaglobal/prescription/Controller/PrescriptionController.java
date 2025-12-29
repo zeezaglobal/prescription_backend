@@ -1,9 +1,12 @@
 package com.zeezaglobal.prescription.Controller;
 
+
 import com.zeezaglobal.prescription.DTO.CreatePrescriptionDTO;
 import com.zeezaglobal.prescription.DTO.PrescriptionResponseDTO;
 import com.zeezaglobal.prescription.DTO.UpdatePrescriptionStatusDTO;
+import com.zeezaglobal.prescription.Service.PrescriptionPdfService;
 import com.zeezaglobal.prescription.Services.PrescriptionService;
+
 import com.zeezaglobal.prescription.Utils.JwtUtil;
 
 import lombok.RequiredArgsConstructor;
@@ -11,7 +14,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -26,34 +31,10 @@ import java.util.Map;
 public class PrescriptionController {
 
     private final PrescriptionService prescriptionService;
+    private final PrescriptionPdfService prescriptionPdfService;
     private final JwtUtil jwtUtil;
 
-    /**
-     * Create a new prescription (Doctors only)
-     * POST /api/prescriptions
-     */
-    @GetMapping("/test-token")
-    public ResponseEntity<?> testToken(@RequestHeader("Authorization") String authHeader) {
-        try {
-            String token = authHeader.substring(7);
 
-            // Extract all claims
-            Long userId = jwtUtil.extractUserId(token);
-            String role = jwtUtil.extractRole(token);
-            String username = jwtUtil.extractUsername(token);
-
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("userId", userId);
-            response.put("role", role);
-            response.put("username", username);
-            response.put("token", token);
-
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(createErrorResponse(e.getMessage()));
-        }
-    }
     @PostMapping
     @PreAuthorize("hasRole('DOCTOR')")
     public ResponseEntity<?> createPrescription(
@@ -63,6 +44,45 @@ public class PrescriptionController {
             Long doctorId = extractUserIdFromToken(authHeader);
             PrescriptionResponseDTO response = prescriptionService.createPrescription(dto, doctorId);
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(createErrorResponse(e.getMessage()));
+        }
+    }
+
+    /**
+     * Download signed prescription PDF (Doctors and Patients can download)
+     * GET /api/prescriptions/{id}/download
+     */
+    @GetMapping("/{id}/download")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'PATIENT')")
+    public ResponseEntity<?> downloadSignedPrescription(
+            @PathVariable Long id,
+            @RequestHeader("Authorization") String authHeader) {
+        try {
+            Long userId = extractUserIdFromToken(authHeader);
+            String role = extractRoleFromToken(authHeader);
+
+            // Verify access based on role
+            PrescriptionResponseDTO prescription;
+            if ("DOCTOR".equals(role)) {
+                prescription = prescriptionService.getPrescriptionById(id, userId);
+            } else {
+                // For patients, verify they own this prescription
+                prescription = prescriptionService.getPrescriptionByIdForPatient(id, userId);
+            }
+
+            // Generate signed PDF
+            byte[] signedPdf = prescriptionPdfService.generateSignedPrescriptionPdf(id, userId);
+
+            String patientName = prescription.getPatient().getFirstName() + "_" + prescription.getPatient().getLastName();
+            String filename = String.format("prescription_%d_%s.pdf", id, patientName.replaceAll("\\s+", "_"));
+
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                    .contentType(MediaType.APPLICATION_PDF)
+                    .contentLength(signedPdf.length)
+                    .body(signedPdf);
+
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(createErrorResponse(e.getMessage()));
         }
