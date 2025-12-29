@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -22,6 +23,14 @@ public interface PatientRepository extends JpaRepository<Patient, Long> {
     // Search by name (supports both first name and last name)
     Page<Patient> findByNameContainingIgnoreCase(String name, Pageable pageable);
 
+
+
+
+
+
+    // With pagination support
+    @Query("SELECT p FROM Patient p WHERE p.doctor.id = :doctorId ORDER BY p.createdAt DESC")
+    List<Patient> findRecentByDoctorId(@Param("doctorId") Long doctorId);
     // Find patients by doctor ID
     Page<Patient> findByDoctorId(Long doctorId, Pageable pageable);
     List<Patient> findByDoctorId(Long doctorId);
@@ -54,4 +63,18 @@ public interface PatientRepository extends JpaRepository<Patient, Long> {
             @Param("searchTerm") String searchTerm,
             Pageable pageable
     );
+    long countByDoctorId(Long doctorId);
+
+    @Query("SELECT COUNT(p) FROM Patient p WHERE p.doctor.id = :doctorId AND p.createdAt > :date")
+    long countByDoctorIdAndCreatedAtAfter(@Param("doctorId") Long doctorId, @Param("date") LocalDateTime date);
+
+    @Query("SELECT COUNT(p) FROM Patient p WHERE p.doctor.id = :doctorId AND p.createdAt BETWEEN :startDate AND :endDate")
+    long countByDoctorIdAndCreatedAtBetween(
+            @Param("doctorId") Long doctorId,
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate
+    );
+
+    // Find methods for dashboard
+    List<Patient> findByDoctorIdOrderByCreatedAtDesc(Long doctorId);
 }

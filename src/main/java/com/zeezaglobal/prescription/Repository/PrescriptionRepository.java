@@ -11,6 +11,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Repository
@@ -22,6 +23,24 @@ public interface PrescriptionRepository extends JpaRepository<Prescription, Long
     // Find all prescriptions by a specific doctor
     Page<Prescription> findByDoctorId(Long doctorId, Pageable pageable);
 
+
+
+    @Query("SELECT COUNT(p) FROM Prescription p WHERE p.doctor.id = :doctorId AND p.status = :status")
+    long countByDoctorIdAndStatus(@Param("doctorId") Long doctorId, @Param("status") String status);
+
+    @Query("SELECT COUNT(p) FROM Prescription p WHERE p.doctor.id = :doctorId AND p.createdAt BETWEEN :startDate AND :endDate")
+    long countByDoctorIdAndCreatedAtBetween(
+            @Param("doctorId") Long doctorId,
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate
+    );
+
+    // Find methods for dashboard
+
+
+    // With pagination support
+    @Query("SELECT p FROM Prescription p WHERE p.doctor.id = :doctorId ORDER BY p.createdAt DESC")
+    List<Prescription> findRecentByDoctorId(@Param("doctorId") Long doctorId);
     // Find prescriptions for a patient by a specific doctor
     Page<Prescription> findByPatientIdAndDoctorId(Long patientId, Long doctorId, Pageable pageable);
 
@@ -44,9 +63,19 @@ public interface PrescriptionRepository extends JpaRepository<Prescription, Long
             Pageable pageable
     );
 
-    // Count prescriptions by doctor
-    long countByDoctorId(Long doctorId);
+
+
+
+
+    @Query("SELECT COUNT(p) FROM Prescription p WHERE p.doctor.id = :doctorId")
+    long countByDoctorId(@Param("doctorId") Long doctorId);
+
+    @Query("SELECT COUNT(p) FROM Prescription p WHERE p.doctor.id = :doctorId AND p.createdAt > :date")
+    long countByDoctorIdAndCreatedAtAfter(@Param("doctorId") Long doctorId, @Param("date") LocalDateTime date);
 
     // Count prescriptions by patient
     long countByPatientId(Long patientId);
+
+    // Find methods for dashboard
+    List<Prescription> findByDoctorIdOrderByCreatedAtDesc(Long doctorId);
 }
