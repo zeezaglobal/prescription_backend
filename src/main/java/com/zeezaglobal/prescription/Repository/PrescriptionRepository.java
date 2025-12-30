@@ -2,6 +2,7 @@ package com.zeezaglobal.prescription.Repository;
 
 
 
+import com.zeezaglobal.prescription.Entities.Patient;
 import com.zeezaglobal.prescription.Entities.Prescription;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -13,6 +14,7 @@ import org.springframework.stereotype.Repository;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface PrescriptionRepository extends JpaRepository<Prescription, Long> {
@@ -78,4 +80,33 @@ public interface PrescriptionRepository extends JpaRepository<Prescription, Long
 
     // Find methods for dashboard
     List<Prescription> findByDoctorIdOrderByCreatedAtDesc(Long doctorId);
+
+
+
+    List<Prescription> findByPatientIdOrderByPrescriptionDateDesc(Long patientId);
+
+    // Find prescriptions within a date range
+    List<Prescription> findByPatientIdAndPrescriptionDateBetweenOrderByPrescriptionDateDesc(
+            Long patientId, LocalDate startDate, LocalDate endDate);
+
+    // Find prescriptions by patient and doctor
+    List<Prescription> findByPatientIdAndDoctorIdOrderByPrescriptionDateDesc(Long patientId, Long doctorId);
+
+
+
+    // Find prescriptions by status
+    List<Prescription> findByPatientIdAndStatusOrderByPrescriptionDateDesc(Long patientId, Prescription.PrescriptionStatus status);
+
+    // Custom query to get prescriptions with all related data eagerly loaded
+    @Query("SELECT DISTINCT p FROM Prescription p " +
+            "LEFT JOIN FETCH p.medications " +
+            "LEFT JOIN FETCH p.patient " +
+            "LEFT JOIN FETCH p.doctor " +
+            "WHERE p.patient.id = :patientId " +
+            "ORDER BY p.prescriptionDate DESC")
+    List<Prescription> findByPatientIdWithDetails(@Param("patientId") Long patientId);
+
+    // Get latest prescription for a patient
+    @Query("SELECT p FROM Prescription p WHERE p.patient.id = :patientId ORDER BY p.prescriptionDate DESC LIMIT 1")
+    Prescription findLatestByPatientId(@Param("patientId") Long patientId);
 }

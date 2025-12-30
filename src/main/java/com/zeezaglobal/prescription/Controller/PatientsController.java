@@ -26,27 +26,7 @@ public class PatientsController {
     @Autowired
     private PatientService patientService;
 
-    @GetMapping
-    @PreAuthorize("hasRole('DOCTOR')")
-    public ResponseEntity<Map<String, Object>> getAllPatients(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
-            @RequestParam(defaultValue = "name") String sortBy,
-            @RequestParam(defaultValue = "asc") String sortDirection) {
 
-        Sort.Direction direction = sortDirection.equalsIgnoreCase("desc") ? Sort.Direction.DESC : Sort.Direction.ASC;
-        Pageable pageable = PageRequest.of(page, size, Sort.by(direction, sortBy));
-
-        Page<Patient> patientsPage = patientService.getAllPatients(pageable);
-
-        Map<String, Object> response = new HashMap<>();
-        response.put("patients", patientsPage.getContent());
-        response.put("currentPage", patientsPage.getNumber());
-        response.put("totalItems", patientsPage.getTotalElements());
-        response.put("totalPages", patientsPage.getTotalPages());
-
-        return ResponseEntity.ok(response);
-    }
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('DOCTOR', 'PATIENT')")
@@ -87,28 +67,7 @@ public class PatientsController {
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/doctor/{doctorId}")
-    @PreAuthorize("hasRole('DOCTOR')")
-    public ResponseEntity<Map<String, Object>> getPatientsByDoctorId(
-            @PathVariable Long doctorId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
-            @RequestParam(defaultValue = "name") String sortBy,
-            @RequestParam(defaultValue = "asc") String sortDirection) {
 
-        Sort.Direction direction = sortDirection.equalsIgnoreCase("desc") ? Sort.Direction.DESC : Sort.Direction.ASC;
-        Pageable pageable = PageRequest.of(page, size, Sort.by(direction, sortBy));
-
-        Page<PatientDTO> patientsPage = patientService.getPatientsByDoctorId(doctorId, pageable);
-
-        Map<String, Object> response = new HashMap<>();
-        response.put("patients", patientsPage.getContent());
-        response.put("currentPage", patientsPage.getNumber());
-        response.put("totalItems", patientsPage.getTotalElements());
-        response.put("totalPages", patientsPage.getTotalPages());
-
-        return ResponseEntity.ok(response);
-    }
 
     @PostMapping
     @PreAuthorize("hasRole('DOCTOR')")
@@ -167,29 +126,6 @@ public class PatientsController {
         }
     }
 
-    @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('DOCTOR')")
-    public ResponseEntity<Map<String, String>> deletePatient(@PathVariable Long id) {
-        try {
-            Optional<Patient> patient = patientService.getPatientById(id);
-
-            if (patient.isEmpty()) {
-                Map<String, String> response = new HashMap<>();
-                response.put("message", "Patient not found");
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
-            }
-
-            patientService.deletePatient(id);
-
-            Map<String, String> response = new HashMap<>();
-            response.put("message", "Patient deleted successfully");
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            Map<String, String> response = new HashMap<>();
-            response.put("message", "Error deleting patient: " + e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
-        }
-    }
 
     @GetMapping("/search")
     @PreAuthorize("hasRole('DOCTOR')")
@@ -256,31 +192,7 @@ public class PatientsController {
         }
     }
 
-    @GetMapping("/search/doctor/{doctorId}")
-    @PreAuthorize("hasRole('DOCTOR')")
-    public ResponseEntity<Map<String, Object>> searchPatientsByDoctorId(
-            @PathVariable Long doctorId,
-            @RequestParam String searchTerm,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
 
-        try {
-            Pageable pageable = PageRequest.of(page, size);
-            Page<PatientDTO> patientsPage = patientService.searchPatientsByDoctor(doctorId, searchTerm, pageable);
-
-            Map<String, Object> response = new HashMap<>();
-            response.put("patients", patientsPage.getContent());
-            response.put("currentPage", patientsPage.getNumber());
-            response.put("totalItems", patientsPage.getTotalElements());
-            response.put("totalPages", patientsPage.getTotalPages());
-
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            Map<String, Object> response = new HashMap<>();
-            response.put("message", "Error searching patients: " + e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
-        }
-    }
 
     @PatchMapping("/{id}/increment-visit")
     @PreAuthorize("hasRole('DOCTOR')")

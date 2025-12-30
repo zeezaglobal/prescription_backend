@@ -27,7 +27,8 @@ public interface PatientRepository extends JpaRepository<Patient, Long> {
 
 
 
-
+    // Find patient by ID and doctor ID (validates doctor ownership)
+    Optional<Patient> findByIdAndDoctorId(Long patientId, Long doctorId);
     // With pagination support
     @Query("SELECT p FROM Patient p WHERE p.doctor.id = :doctorId ORDER BY p.createdAt DESC")
     List<Patient> findRecentByDoctorId(@Param("doctorId") Long doctorId);
