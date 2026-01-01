@@ -40,6 +40,9 @@ public class Doctor extends User {
     @Column(length = 500)
     private String qualifications;
 
+    @Column(nullable = false)
+    private boolean emailVerified = false;
+
     @Column(name = "hospital_name")
     private String hospitalName;
 

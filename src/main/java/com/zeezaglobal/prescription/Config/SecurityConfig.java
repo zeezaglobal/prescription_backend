@@ -116,9 +116,12 @@ public class SecurityConfig {
                         .requestMatchers("/auth/patient/register").permitAll()
                         .requestMatchers("/auth/login").permitAll()
                         .requestMatchers("/auth/validate-token").permitAll()
+                        .requestMatchers("/auth/doctor/verify-email").permitAll()
+                        .requestMatchers("/auth/forgot-password").permitAll()
+                        .requestMatchers("/auth/reset-password/validate").permitAll()
+                        .requestMatchers("/auth/reset-password").permitAll()
 
-                        // Public API endpoints
-                        .requestMatchers("/api/drugs/**").permitAll()
+
 
                         // Doctor-only endpoints
                         .requestMatchers("/api/doctors/**").hasRole("DOCTOR")
