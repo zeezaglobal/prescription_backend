@@ -120,9 +120,13 @@ public class SecurityConfig {
                         .requestMatchers("/auth/forgot-password").permitAll()
                         .requestMatchers("/auth/reset-password/validate").permitAll()
                         .requestMatchers("/auth/reset-password").permitAll()
+                        .requestMatchers("/api/subscription/pricing").permitAll()
 
 
+                        .requestMatchers("/api/subscriptions/webhook").permitAll()  // Webhook must be public for Stripe
 
+                        // Protected endpoints - require authentication
+                        .requestMatchers("/api/subscriptions/**").hasRole("DOCTOR")
                         // Doctor-only endpoints
                         .requestMatchers("/api/doctors/**").hasRole("DOCTOR")
                         .requestMatchers("/api/prescriptions/**").hasAnyRole("DOCTOR", "PATIENT")
