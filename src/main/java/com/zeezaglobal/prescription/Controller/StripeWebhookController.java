@@ -1,5 +1,7 @@
 package com.zeezaglobal.prescription.Controller;
 
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.stripe.exception.SignatureVerificationException;
 import com.stripe.model.*;
 import com.stripe.model.checkout.Session;
@@ -82,6 +84,26 @@ public class StripeWebhookController {
         return ResponseEntity.ok("Webhook processed");
     }
 
+    /**
+     * Extracts the actual object JSON from the event data.
+     * The raw JSON has structure: {"previous_attributes": ..., "object": {...}}
+     * We need just the "object" part for deserialization.
+     */
+    private String extractObjectJson(Event event) {
+        String rawJson = event.getData().toJson();
+        try {
+            JsonObject wrapper = JsonParser.parseString(rawJson).getAsJsonObject();
+            if (wrapper.has("object")) {
+                return wrapper.get("object").toString();
+            }
+            // If no wrapper, return as-is
+            return rawJson;
+        } catch (Exception e) {
+            log.warn("Could not parse JSON wrapper, using raw JSON: {}", e.getMessage());
+            return rawJson;
+        }
+    }
+
     private void handleCheckoutSessionCompleted(Event event) {
         log.info("=== WEBHOOK: handleCheckoutSessionCompleted START ===");
 
@@ -92,12 +114,13 @@ public class StripeWebhookController {
             session = (Session) deserializer.getObject().get();
             log.info("Deserialized session using getObject(): {}", session.getId());
         } else {
-            // Fallback: deserialize from raw JSON
+            // Fallback: deserialize from raw JSON (extract 'object' field)
             log.warn("getObject() returned empty, using raw JSON deserialization");
-            String rawJson = event.getData().toJson();
-            log.info("Raw JSON: {}", rawJson);
             try {
-                session = ApiResource.GSON.fromJson(rawJson, Session.class);
+                String objectJson = extractObjectJson(event);
+                log.info("Extracted object JSON (first 200 chars): {}",
+                        objectJson.length() > 200 ? objectJson.substring(0, 200) : objectJson);
+                session = ApiResource.GSON.fromJson(objectJson, Session.class);
                 log.info("Deserialized session from raw JSON: {}", session != null ? session.getId() : "null");
             } catch (Exception e) {
                 log.error("Failed to deserialize session from raw JSON: {}", e.getMessage(), e);
@@ -128,13 +151,15 @@ public class StripeWebhookController {
             stripeSubscription = (Subscription) deserializer.getObject().get();
             log.info("Deserialized subscription using getObject(): {}", stripeSubscription.getId());
         } else {
-            // Fallback: deserialize from raw JSON
+            // Fallback: deserialize from raw JSON (extract 'object' field)
             log.warn("getObject() returned empty, using raw JSON deserialization");
-            String rawJson = event.getData().toJson();
-            log.info("Raw JSON: {}", rawJson);
             try {
-                stripeSubscription = ApiResource.GSON.fromJson(rawJson, Subscription.class);
-                log.info("Deserialized subscription from raw JSON: {}", stripeSubscription != null ? stripeSubscription.getId() : "null");
+                String objectJson = extractObjectJson(event);
+                log.info("Extracted object JSON (first 200 chars): {}",
+                        objectJson.length() > 200 ? objectJson.substring(0, 200) : objectJson);
+                stripeSubscription = ApiResource.GSON.fromJson(objectJson, Subscription.class);
+                log.info("Deserialized subscription from raw JSON: {}",
+                        stripeSubscription != null ? stripeSubscription.getId() : "null");
             } catch (Exception e) {
                 log.error("Failed to deserialize subscription from raw JSON: {}", e.getMessage(), e);
                 return;
@@ -160,9 +185,9 @@ public class StripeWebhookController {
             stripeSubscription = (Subscription) deserializer.getObject().get();
         } else {
             log.warn("getObject() returned empty, using raw JSON deserialization");
-            String rawJson = event.getData().toJson();
             try {
-                stripeSubscription = ApiResource.GSON.fromJson(rawJson, Subscription.class);
+                String objectJson = extractObjectJson(event);
+                stripeSubscription = ApiResource.GSON.fromJson(objectJson, Subscription.class);
             } catch (Exception e) {
                 log.error("Failed to deserialize subscription: {}", e.getMessage(), e);
                 return;
@@ -188,12 +213,13 @@ public class StripeWebhookController {
             invoice = (Invoice) deserializer.getObject().get();
             log.info("Deserialized invoice using getObject(): {}", invoice.getId());
         } else {
-            // Fallback: deserialize from raw JSON
+            // Fallback: deserialize from raw JSON (extract 'object' field)
             log.warn("getObject() returned empty, using raw JSON deserialization");
-            String rawJson = event.getData().toJson();
-            log.info("Raw JSON (first 500 chars): {}", rawJson.length() > 500 ? rawJson.substring(0, 500) : rawJson);
             try {
-                invoice = ApiResource.GSON.fromJson(rawJson, Invoice.class);
+                String objectJson = extractObjectJson(event);
+                log.info("Extracted object JSON (first 200 chars): {}",
+                        objectJson.length() > 200 ? objectJson.substring(0, 200) : objectJson);
+                invoice = ApiResource.GSON.fromJson(objectJson, Invoice.class);
                 log.info("Deserialized invoice from raw JSON: {}", invoice != null ? invoice.getId() : "null");
             } catch (Exception e) {
                 log.error("Failed to deserialize invoice from raw JSON: {}", e.getMessage(), e);
@@ -220,9 +246,9 @@ public class StripeWebhookController {
             invoice = (Invoice) deserializer.getObject().get();
         } else {
             log.warn("getObject() returned empty, using raw JSON deserialization");
-            String rawJson = event.getData().toJson();
             try {
-                invoice = ApiResource.GSON.fromJson(rawJson, Invoice.class);
+                String objectJson = extractObjectJson(event);
+                invoice = ApiResource.GSON.fromJson(objectJson, Invoice.class);
             } catch (Exception e) {
                 log.error("Failed to deserialize invoice: {}", e.getMessage(), e);
                 return;
@@ -248,9 +274,9 @@ public class StripeWebhookController {
             stripeSubscription = (Subscription) deserializer.getObject().get();
         } else {
             log.warn("getObject() returned empty, using raw JSON deserialization");
-            String rawJson = event.getData().toJson();
             try {
-                stripeSubscription = ApiResource.GSON.fromJson(rawJson, Subscription.class);
+                String objectJson = extractObjectJson(event);
+                stripeSubscription = ApiResource.GSON.fromJson(objectJson, Subscription.class);
             } catch (Exception e) {
                 log.error("Failed to deserialize subscription: {}", e.getMessage(), e);
                 return;
