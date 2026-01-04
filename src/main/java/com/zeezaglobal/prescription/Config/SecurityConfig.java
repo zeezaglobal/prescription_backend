@@ -123,7 +123,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/subscription/pricing").permitAll()
                         .requestMatchers("/api/webhooks/**").permitAll()
 
-                        .requestMatchers("/api/subscriptions/webhook").permitAll()  // Webhook must be public for Stripe
+
 
                         // Protected endpoints - require authentication
                         .requestMatchers("/api/subscriptions/**").hasRole("DOCTOR")
