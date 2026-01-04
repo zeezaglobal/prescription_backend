@@ -3,6 +3,7 @@ package com.zeezaglobal.prescription.Controller;
 import com.stripe.exception.SignatureVerificationException;
 import com.stripe.model.*;
 import com.stripe.model.checkout.Session;
+import com.stripe.net.ApiResource;
 import com.stripe.net.Webhook;
 import com.zeezaglobal.prescription.Service.SubscriptionService;
 import lombok.RequiredArgsConstructor;
@@ -82,60 +83,186 @@ public class StripeWebhookController {
     }
 
     private void handleCheckoutSessionCompleted(Event event) {
+        log.info("=== WEBHOOK: handleCheckoutSessionCompleted START ===");
+
         EventDataObjectDeserializer deserializer = event.getDataObjectDeserializer();
+        Session session = null;
+
         if (deserializer.getObject().isPresent()) {
-            Session session = (Session) deserializer.getObject().get();
+            session = (Session) deserializer.getObject().get();
+            log.info("Deserialized session using getObject(): {}", session.getId());
+        } else {
+            // Fallback: deserialize from raw JSON
+            log.warn("getObject() returned empty, using raw JSON deserialization");
+            String rawJson = event.getData().toJson();
+            log.info("Raw JSON: {}", rawJson);
             try {
-                subscriptionService.handleCheckoutSessionCompleted(session);
-                log.info("Processed checkout.session.completed for session: {}", session.getId());
+                session = ApiResource.GSON.fromJson(rawJson, Session.class);
+                log.info("Deserialized session from raw JSON: {}", session != null ? session.getId() : "null");
             } catch (Exception e) {
-                log.error("Error handling checkout session completed: {}", e.getMessage(), e);
+                log.error("Failed to deserialize session from raw JSON: {}", e.getMessage(), e);
+                return;
             }
+        }
+
+        if (session == null) {
+            log.error("Session is null after deserialization attempts!");
+            return;
+        }
+
+        try {
+            subscriptionService.handleCheckoutSessionCompleted(session);
+            log.info("=== WEBHOOK: handleCheckoutSessionCompleted END - SUCCESS ===");
+        } catch (Exception e) {
+            log.error("Error handling checkout session completed: {}", e.getMessage(), e);
         }
     }
 
     private void handleSubscriptionUpdated(Event event) {
+        log.info("=== WEBHOOK: handleSubscriptionUpdated START ===");
+
         EventDataObjectDeserializer deserializer = event.getDataObjectDeserializer();
+        Subscription stripeSubscription = null;
+
         if (deserializer.getObject().isPresent()) {
-            Subscription stripeSubscription = (Subscription) deserializer.getObject().get();
-            subscriptionService.handleSubscriptionUpdated(stripeSubscription);
-            log.info("Processed subscription update for: {}", stripeSubscription.getId());
+            stripeSubscription = (Subscription) deserializer.getObject().get();
+            log.info("Deserialized subscription using getObject(): {}", stripeSubscription.getId());
+        } else {
+            // Fallback: deserialize from raw JSON
+            log.warn("getObject() returned empty, using raw JSON deserialization");
+            String rawJson = event.getData().toJson();
+            log.info("Raw JSON: {}", rawJson);
+            try {
+                stripeSubscription = ApiResource.GSON.fromJson(rawJson, Subscription.class);
+                log.info("Deserialized subscription from raw JSON: {}", stripeSubscription != null ? stripeSubscription.getId() : "null");
+            } catch (Exception e) {
+                log.error("Failed to deserialize subscription from raw JSON: {}", e.getMessage(), e);
+                return;
+            }
         }
+
+        if (stripeSubscription == null) {
+            log.error("Subscription is null after deserialization attempts!");
+            return;
+        }
+
+        subscriptionService.handleSubscriptionUpdated(stripeSubscription);
+        log.info("=== WEBHOOK: handleSubscriptionUpdated END - SUCCESS ===");
     }
 
     private void handleSubscriptionDeleted(Event event) {
+        log.info("=== WEBHOOK: handleSubscriptionDeleted START ===");
+
         EventDataObjectDeserializer deserializer = event.getDataObjectDeserializer();
+        Subscription stripeSubscription = null;
+
         if (deserializer.getObject().isPresent()) {
-            Subscription stripeSubscription = (Subscription) deserializer.getObject().get();
-            subscriptionService.handleSubscriptionDeleted(stripeSubscription);
-            log.info("Processed subscription deletion for: {}", stripeSubscription.getId());
+            stripeSubscription = (Subscription) deserializer.getObject().get();
+        } else {
+            log.warn("getObject() returned empty, using raw JSON deserialization");
+            String rawJson = event.getData().toJson();
+            try {
+                stripeSubscription = ApiResource.GSON.fromJson(rawJson, Subscription.class);
+            } catch (Exception e) {
+                log.error("Failed to deserialize subscription: {}", e.getMessage(), e);
+                return;
+            }
         }
+
+        if (stripeSubscription == null) {
+            log.error("Subscription is null!");
+            return;
+        }
+
+        subscriptionService.handleSubscriptionDeleted(stripeSubscription);
+        log.info("=== WEBHOOK: handleSubscriptionDeleted END - SUCCESS ===");
     }
 
     private void handleInvoicePaymentSucceeded(Event event) {
+        log.info("=== WEBHOOK: handleInvoicePaymentSucceeded START ===");
+
         EventDataObjectDeserializer deserializer = event.getDataObjectDeserializer();
+        Invoice invoice = null;
+
         if (deserializer.getObject().isPresent()) {
-            Invoice invoice = (Invoice) deserializer.getObject().get();
-            subscriptionService.handleInvoicePaymentSucceeded(invoice);
-            log.info("Processed invoice payment succeeded for: {}", invoice.getId());
+            invoice = (Invoice) deserializer.getObject().get();
+            log.info("Deserialized invoice using getObject(): {}", invoice.getId());
+        } else {
+            // Fallback: deserialize from raw JSON
+            log.warn("getObject() returned empty, using raw JSON deserialization");
+            String rawJson = event.getData().toJson();
+            log.info("Raw JSON (first 500 chars): {}", rawJson.length() > 500 ? rawJson.substring(0, 500) : rawJson);
+            try {
+                invoice = ApiResource.GSON.fromJson(rawJson, Invoice.class);
+                log.info("Deserialized invoice from raw JSON: {}", invoice != null ? invoice.getId() : "null");
+            } catch (Exception e) {
+                log.error("Failed to deserialize invoice from raw JSON: {}", e.getMessage(), e);
+                return;
+            }
         }
+
+        if (invoice == null) {
+            log.error("Invoice is null after deserialization attempts!");
+            return;
+        }
+
+        subscriptionService.handleInvoicePaymentSucceeded(invoice);
+        log.info("=== WEBHOOK: handleInvoicePaymentSucceeded END - SUCCESS ===");
     }
 
     private void handleInvoicePaymentFailed(Event event) {
+        log.info("=== WEBHOOK: handleInvoicePaymentFailed START ===");
+
         EventDataObjectDeserializer deserializer = event.getDataObjectDeserializer();
+        Invoice invoice = null;
+
         if (deserializer.getObject().isPresent()) {
-            Invoice invoice = (Invoice) deserializer.getObject().get();
-            subscriptionService.handleInvoicePaymentFailed(invoice);
-            log.info("Processed invoice payment failed for: {}", invoice.getId());
+            invoice = (Invoice) deserializer.getObject().get();
+        } else {
+            log.warn("getObject() returned empty, using raw JSON deserialization");
+            String rawJson = event.getData().toJson();
+            try {
+                invoice = ApiResource.GSON.fromJson(rawJson, Invoice.class);
+            } catch (Exception e) {
+                log.error("Failed to deserialize invoice: {}", e.getMessage(), e);
+                return;
+            }
         }
+
+        if (invoice == null) {
+            log.error("Invoice is null!");
+            return;
+        }
+
+        subscriptionService.handleInvoicePaymentFailed(invoice);
+        log.info("=== WEBHOOK: handleInvoicePaymentFailed END - SUCCESS ===");
     }
 
     private void handleTrialWillEnd(Event event) {
+        log.info("=== WEBHOOK: handleTrialWillEnd START ===");
+
         EventDataObjectDeserializer deserializer = event.getDataObjectDeserializer();
+        Subscription stripeSubscription = null;
+
         if (deserializer.getObject().isPresent()) {
-            Subscription stripeSubscription = (Subscription) deserializer.getObject().get();
-            subscriptionService.handleTrialWillEnd(stripeSubscription);
-            log.info("Processed trial will end for: {}", stripeSubscription.getId());
+            stripeSubscription = (Subscription) deserializer.getObject().get();
+        } else {
+            log.warn("getObject() returned empty, using raw JSON deserialization");
+            String rawJson = event.getData().toJson();
+            try {
+                stripeSubscription = ApiResource.GSON.fromJson(rawJson, Subscription.class);
+            } catch (Exception e) {
+                log.error("Failed to deserialize subscription: {}", e.getMessage(), e);
+                return;
+            }
         }
+
+        if (stripeSubscription == null) {
+            log.error("Subscription is null!");
+            return;
+        }
+
+        subscriptionService.handleTrialWillEnd(stripeSubscription);
+        log.info("=== WEBHOOK: handleTrialWillEnd END - SUCCESS ===");
     }
 }
