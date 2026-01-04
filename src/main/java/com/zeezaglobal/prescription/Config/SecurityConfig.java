@@ -121,7 +121,7 @@ public class SecurityConfig {
                         .requestMatchers("/auth/reset-password/validate").permitAll()
                         .requestMatchers("/auth/reset-password").permitAll()
                         .requestMatchers("/api/subscription/pricing").permitAll()
-
+                        .requestMatchers("/api/webhooks/**").permitAll()
 
                         .requestMatchers("/api/subscriptions/webhook").permitAll()  // Webhook must be public for Stripe
 

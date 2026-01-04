@@ -1,15 +1,13 @@
 package com.zeezaglobal.prescription.Controller;
 
-
 import com.stripe.exception.SignatureVerificationException;
 import com.stripe.model.*;
 import com.stripe.model.checkout.Session;
 import com.stripe.net.Webhook;
-import com.zeezaglobal.prescription.Config.StripeConfig;
-
 import com.zeezaglobal.prescription.Service.SubscriptionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -21,7 +19,9 @@ import org.springframework.web.bind.annotation.*;
 public class StripeWebhookController {
 
     private final SubscriptionService subscriptionService;
-    private final StripeConfig stripeConfig;
+
+    @Value("${stripe.webhook.secret}")
+    private String webhookSecret;
 
     @PostMapping("/stripe")
     public ResponseEntity<String> handleStripeWebhook(
@@ -31,14 +31,7 @@ public class StripeWebhookController {
         Event event;
 
         try {
-            // Verify webhook signature if secret is configured
-            if (stripeConfig.getWebhookSecret() != null && !stripeConfig.getWebhookSecret().isEmpty()) {
-                event = Webhook.constructEvent(payload, sigHeader, stripeConfig.getWebhookSecret());
-            } else {
-                // For development without webhook secret
-                event = Event.GSON.fromJson(payload, Event.class);
-                log.warn("Webhook signature verification skipped - no webhook secret configured");
-            }
+            event = Webhook.constructEvent(payload, sigHeader, webhookSecret);
         } catch (SignatureVerificationException e) {
             log.error("Webhook signature verification failed: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Invalid signature");
@@ -82,19 +75,22 @@ public class StripeWebhookController {
             }
         } catch (Exception e) {
             log.error("Error processing webhook event {}: {}", eventType, e.getMessage(), e);
-            // Still return 200 to prevent Stripe from retrying
-            // The error is logged for investigation
+            // Still return 200 to prevent Stripe from retrying indefinitely
         }
 
         return ResponseEntity.ok("Webhook processed");
     }
 
-    private void handleCheckoutSessionCompleted(Event event) throws Exception {
+    private void handleCheckoutSessionCompleted(Event event) {
         EventDataObjectDeserializer deserializer = event.getDataObjectDeserializer();
         if (deserializer.getObject().isPresent()) {
             Session session = (Session) deserializer.getObject().get();
-            subscriptionService.handleCheckoutSessionCompleted(session);
-            log.info("Processed checkout.session.completed for session: {}", session.getId());
+            try {
+                subscriptionService.handleCheckoutSessionCompleted(session);
+                log.info("Processed checkout.session.completed for session: {}", session.getId());
+            } catch (Exception e) {
+                log.error("Error handling checkout session completed: {}", e.getMessage(), e);
+            }
         }
     }
 
@@ -111,7 +107,7 @@ public class StripeWebhookController {
         EventDataObjectDeserializer deserializer = event.getDataObjectDeserializer();
         if (deserializer.getObject().isPresent()) {
             Subscription stripeSubscription = (Subscription) deserializer.getObject().get();
-            subscriptionService.handleSubscriptionUpdated(stripeSubscription);
+            subscriptionService.handleSubscriptionDeleted(stripeSubscription);
             log.info("Processed subscription deletion for: {}", stripeSubscription.getId());
         }
     }
@@ -121,7 +117,7 @@ public class StripeWebhookController {
         if (deserializer.getObject().isPresent()) {
             Invoice invoice = (Invoice) deserializer.getObject().get();
             subscriptionService.handleInvoicePaymentSucceeded(invoice);
-            log.info("Processed successful payment for invoice: {}", invoice.getId());
+            log.info("Processed invoice payment succeeded for: {}", invoice.getId());
         }
     }
 
@@ -130,7 +126,7 @@ public class StripeWebhookController {
         if (deserializer.getObject().isPresent()) {
             Invoice invoice = (Invoice) deserializer.getObject().get();
             subscriptionService.handleInvoicePaymentFailed(invoice);
-            log.warn("Processed failed payment for invoice: {}", invoice.getId());
+            log.info("Processed invoice payment failed for: {}", invoice.getId());
         }
     }
 
@@ -138,9 +134,8 @@ public class StripeWebhookController {
         EventDataObjectDeserializer deserializer = event.getDataObjectDeserializer();
         if (deserializer.getObject().isPresent()) {
             Subscription stripeSubscription = (Subscription) deserializer.getObject().get();
-            // This event fires 3 days before trial ends
-            // You could send a reminder email here
-            log.info("Trial will end soon for subscription: {}", stripeSubscription.getId());
+            subscriptionService.handleTrialWillEnd(stripeSubscription);
+            log.info("Processed trial will end for: {}", stripeSubscription.getId());
         }
     }
 }

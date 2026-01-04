@@ -405,4 +405,41 @@ public class SubscriptionService {
         }
         return "Your subscription is active.";
     }
+    @Transactional
+    public void handleSubscriptionDeleted(com.stripe.model.Subscription stripeSubscription) {
+        String subscriptionId = stripeSubscription.getId();
+        Optional<Subscription> subscriptionOpt = subscriptionRepository.findByStripeSubscriptionId(subscriptionId);
+
+        if (subscriptionOpt.isEmpty()) {
+            log.warn("No local subscription found for deleted Stripe subscription: {}", subscriptionId);
+            return;
+        }
+
+        Subscription subscription = subscriptionOpt.get();
+        subscription.setStatus(Subscription.SubscriptionStatus.CANCELLED);
+        subscription.setCancellationDate(LocalDateTime.now());
+
+        subscriptionRepository.save(subscription);
+        log.info("Subscription {} marked as CANCELLED", subscriptionId);
+    }
+
+    /**
+     * Handle customer.subscription.trial_will_end webhook event
+     */
+    @Transactional
+    public void handleTrialWillEnd(com.stripe.model.Subscription stripeSubscription) {
+        String subscriptionId = stripeSubscription.getId();
+        Optional<Subscription> subscriptionOpt = subscriptionRepository.findByStripeSubscriptionId(subscriptionId);
+
+        if (subscriptionOpt.isEmpty()) {
+            log.info("Trial ending notification for unknown subscription: {}", subscriptionId);
+            return;
+        }
+
+        Subscription subscription = subscriptionOpt.get();
+        log.info("Trial ending soon for doctor {} - subscription {}",
+                subscription.getDoctor().getId(), subscriptionId);
+
+        // TODO: Send email notification to doctor about trial ending
+    }
 }
