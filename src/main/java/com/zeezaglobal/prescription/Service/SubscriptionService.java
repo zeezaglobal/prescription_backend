@@ -16,7 +16,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.zeezaglobal.prescription.Entities.Subscription;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 
@@ -309,6 +311,9 @@ public class SubscriptionService {
         subscription.setAmountPaid(stripeConfig.getYearlyAmountPaise());
         subscription.setLastPaymentDate(LocalDateTime.now());
         subscription.setCurrency("INR");
+        // Clear any previous cancellation data on new subscription
+        subscription.setCancellationDate(null);
+        subscription.setCancellationReason(null);
 
         Subscription saved = subscriptionRepository.save(subscription);
         log.info("AFTER UPDATE - Subscription ID: {}, Status: {}, Plan: {}, StripeSubId: {}, StripeCustomerId: {}",
@@ -435,7 +440,7 @@ public class SubscriptionService {
     }
 
     @Transactional
-    public void handleSubscriptionCanceled(com.stripe.model.Subscription stripeSubscription) {
+    public void handleSubscriptionCanceled(com.stripe.model.Subscription stripeSubscription, String cancellationReason) {
         log.info("=== SUBSCRIPTION CANCELED START ===");
 
         Optional<Subscription> subscriptionOpt = findSubscriptionByStripeData(stripeSubscription);
@@ -447,37 +452,67 @@ public class SubscriptionService {
         Subscription subscription = subscriptionOpt.get();
         subscription.setStatus(Subscription.SubscriptionStatus.CANCELLED);
         subscription.setCancellationDate(LocalDateTime.now());
+
+        // Set cancellation reason if provided and not already set
+        if (cancellationReason != null && !cancellationReason.isEmpty()) {
+            subscription.setCancellationReason(cancellationReason);
+            log.info("Set cancellation reason: {}", cancellationReason);
+        }
+
         subscriptionRepository.save(subscription);
 
-        log.info("=== SUBSCRIPTION CANCELED END === Doctor: {}", subscription.getDoctor().getId());
+        log.info("=== SUBSCRIPTION CANCELED END === Doctor: {}, Reason: {}",
+                subscription.getDoctor().getId(), subscription.getCancellationReason());
     }
 
     @Transactional
-    public void handleSubscriptionCancellationScheduled(com.stripe.model.Subscription stripeSubscription) {
+    public void handleSubscriptionCancellationScheduled(com.stripe.model.Subscription stripeSubscription, String cancellationReason) {
         log.info("=== SUBSCRIPTION CANCELLATION SCHEDULED START ===");
 
-        Optional<Subscription> subscriptionOpt = findSubscriptionByStripeData(stripeSubscription);
+        String subscriptionId = stripeSubscription.getId();
+        log.info("Stripe Subscription ID: {}, Cancellation Reason: {}", subscriptionId, cancellationReason);
+
+        Optional<Subscription> subscriptionOpt = subscriptionRepository.findByStripeSubscriptionId(subscriptionId);
+
         if (subscriptionOpt.isEmpty()) {
-            log.warn("No local subscription found for cancellation scheduling");
+            // Try to find by customer ID
+            String customerId = stripeSubscription.getCustomer();
+            subscriptionOpt = subscriptionRepository.findByStripeCustomerId(customerId);
+        }
+
+        if (subscriptionOpt.isEmpty()) {
+            log.warn("No local subscription found for cancellation scheduled: {}", subscriptionId);
             return;
         }
 
         Subscription subscription = subscriptionOpt.get();
-        // Status stays ACTIVE until actual cancellation
-        // Just record that cancellation is scheduled
+        log.info("BEFORE UPDATE - Status: {}, CancellationReason: {}",
+                subscription.getStatus(), subscription.getCancellationReason());
+
+        // Keep status as ACTIVE until period actually ends, but mark cancellation scheduled
+        // The status will change to CANCELLED when subscription.deleted event fires
+        subscription.setCancellationReason(cancellationReason);
+        subscription.setCancellationDate(LocalDateTime.now());
+
+        // Set the actual end date from Stripe's cancel_at
         Long cancelAt = stripeSubscription.getCancelAt();
         if (cancelAt != null) {
-            LocalDateTime cancelDate = LocalDateTime.ofEpochSecond(cancelAt, 0, java.time.ZoneOffset.UTC);
-            subscription.setSubscriptionEndDate(cancelDate);
-            log.info("Cancellation scheduled for: {}", cancelDate);
+            LocalDateTime cancelDateTime = LocalDateTime.ofInstant(
+                    Instant.ofEpochSecond(cancelAt),
+                    ZoneId.systemDefault()
+            );
+            subscription.setSubscriptionEndDate(cancelDateTime);
+            log.info("Subscription will end at: {}", cancelDateTime);
         }
+
         subscriptionRepository.save(subscription);
 
-        log.info("=== SUBSCRIPTION CANCELLATION SCHEDULED END === Doctor: {}", subscription.getDoctor().getId());
+        log.info("=== SUBSCRIPTION CANCELLATION SCHEDULED END === Doctor: {}, Reason: {}",
+                subscription.getDoctor().getId(), cancellationReason);
     }
 
     @Transactional
-    public void handleSubscriptionDeleted(com.stripe.model.Subscription stripeSubscription) {
+    public void handleSubscriptionDeleted(com.stripe.model.Subscription stripeSubscription, String cancellationReason) {
         log.info("=== SUBSCRIPTION DELETED START ===");
 
         Optional<Subscription> subscriptionOpt = findSubscriptionByStripeData(stripeSubscription);
@@ -488,10 +523,23 @@ public class SubscriptionService {
 
         Subscription subscription = subscriptionOpt.get();
         subscription.setStatus(Subscription.SubscriptionStatus.EXPIRED);
-        subscription.setCancellationDate(LocalDateTime.now());
+
+        // Only set cancellation date if not already set (from cancellation_scheduled)
+        if (subscription.getCancellationDate() == null) {
+            subscription.setCancellationDate(LocalDateTime.now());
+        }
+
+        // Set cancellation reason if provided and not already set
+        if (cancellationReason != null && !cancellationReason.isEmpty()
+                && subscription.getCancellationReason() == null) {
+            subscription.setCancellationReason(cancellationReason);
+            log.info("Set cancellation reason on delete: {}", cancellationReason);
+        }
+
         subscriptionRepository.save(subscription);
 
-        log.info("=== SUBSCRIPTION DELETED END === Doctor: {}, Status set to EXPIRED", subscription.getDoctor().getId());
+        log.info("=== SUBSCRIPTION DELETED END === Doctor: {}, Status set to EXPIRED, Reason: {}",
+                subscription.getDoctor().getId(), subscription.getCancellationReason());
     }
 
     @Transactional
@@ -523,6 +571,9 @@ public class SubscriptionService {
 
         Subscription subscription = subscriptionOpt.get();
         subscription.setStatus(Subscription.SubscriptionStatus.ACTIVE);
+        // Clear cancellation data on resume
+        subscription.setCancellationDate(null);
+        subscription.setCancellationReason(null);
         updateSubscriptionDates(subscription, stripeSubscription);
         subscriptionRepository.save(subscription);
 
@@ -569,6 +620,9 @@ public class SubscriptionService {
         subscription.setLastPaymentDate(LocalDateTime.now());
         subscription.setAmountPaid(invoice.getAmountPaid() != null ? invoice.getAmountPaid().intValue() : 0);
         subscription.setCurrency(invoice.getCurrency() != null ? invoice.getCurrency().toUpperCase() : "INR");
+        // Clear cancellation data on successful payment
+        subscription.setCancellationDate(null);
+        subscription.setCancellationReason(null);
 
         // For renewal payments, extend the subscription
         String billingReason = invoice.getBillingReason();

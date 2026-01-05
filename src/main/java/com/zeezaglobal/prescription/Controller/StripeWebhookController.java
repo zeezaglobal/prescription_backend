@@ -137,6 +137,47 @@ public class StripeWebhookController {
     }
 
     /**
+     * Extract cancellation reason from Stripe subscription
+     */
+    private String extractCancellationReason(Subscription stripeSubscription) {
+        if (stripeSubscription.getCancellationDetails() == null) {
+            return null;
+        }
+
+        Subscription.CancellationDetails details = stripeSubscription.getCancellationDetails();
+        StringBuilder reasonBuilder = new StringBuilder();
+
+        // Get the reason - could be "cancellation_requested", "payment_failed", etc.
+        String reason = details.getReason();
+        if (reason != null && !reason.isEmpty()) {
+            reasonBuilder.append(reason);
+        }
+
+        // Get customer-provided feedback like "too_expensive", "missing_features", etc.
+        String feedback = details.getFeedback();
+        if (feedback != null && !feedback.isEmpty()) {
+            if (reasonBuilder.length() > 0) {
+                reasonBuilder.append(" - ");
+            }
+            reasonBuilder.append(feedback);
+        }
+
+        // Get free-form comment if customer portal allows comments
+        String comment = details.getComment();
+        if (comment != null && !comment.isEmpty()) {
+            if (reasonBuilder.length() > 0) {
+                reasonBuilder.append(": ");
+            }
+            reasonBuilder.append(comment);
+        }
+
+        String finalReason = reasonBuilder.toString();
+        log.info("Extracted cancellation reason: {}", finalReason);
+
+        return finalReason.isEmpty() ? null : finalReason;
+    }
+
+    /**
      * Handle successful checkout - new subscription created via checkout
      */
     private void handleCheckoutSessionCompleted(Event event) {
@@ -196,10 +237,14 @@ public class StripeWebhookController {
             log.info("Subscription {} status: {}, cancelAtPeriodEnd: {}",
                     stripeSubscription.getId(), status, cancelAtPeriodEnd);
 
+            // Extract cancellation reason if available
+            String cancellationReason = extractCancellationReason(stripeSubscription);
+
             // Check if cancellation was scheduled
             if (Boolean.TRUE.equals(cancelAtPeriodEnd)) {
-                log.info("Subscription {} scheduled for cancellation at period end", stripeSubscription.getId());
-                subscriptionService.handleSubscriptionCancellationScheduled(stripeSubscription);
+                log.info("Subscription {} scheduled for cancellation at period end, reason: {}",
+                        stripeSubscription.getId(), cancellationReason);
+                subscriptionService.handleSubscriptionCancellationScheduled(stripeSubscription, cancellationReason);
 
                 // Send cancellation scheduled email
                 sendCancellationScheduledEmail(stripeSubscription);
@@ -208,7 +253,10 @@ public class StripeWebhookController {
             // Handle status changes
             switch (status) {
                 case "active":
-                    subscriptionService.handleSubscriptionActivated(stripeSubscription);
+                    // Only call activated if NOT scheduled for cancellation (to avoid overwriting)
+                    if (!Boolean.TRUE.equals(cancelAtPeriodEnd)) {
+                        subscriptionService.handleSubscriptionActivated(stripeSubscription);
+                    }
                     break;
                 case "past_due":
                     subscriptionService.handleSubscriptionPastDue(stripeSubscription);
@@ -219,7 +267,7 @@ public class StripeWebhookController {
                     sendSubscriptionSuspendedEmail(stripeSubscription);
                     break;
                 case "canceled":
-                    subscriptionService.handleSubscriptionCanceled(stripeSubscription);
+                    subscriptionService.handleSubscriptionCanceled(stripeSubscription, cancellationReason);
                     break;
                 default:
                     subscriptionService.handleSubscriptionUpdated(stripeSubscription);
@@ -241,7 +289,11 @@ public class StripeWebhookController {
         if (stripeSubscription == null) return;
 
         try {
-            subscriptionService.handleSubscriptionDeleted(stripeSubscription);
+            // Extract cancellation reason
+            String cancellationReason = extractCancellationReason(stripeSubscription);
+            log.info("Subscription deleted with reason: {}", cancellationReason);
+
+            subscriptionService.handleSubscriptionDeleted(stripeSubscription, cancellationReason);
 
             // Send subscription ended email
             sendSubscriptionEndedEmail(stripeSubscription);
