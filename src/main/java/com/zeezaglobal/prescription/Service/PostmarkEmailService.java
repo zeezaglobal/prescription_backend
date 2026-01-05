@@ -20,7 +20,7 @@ public class PostmarkEmailService {
     @Value("${postmark.api.token:b6ce4c63-1434-43e6-9d9a-188b2510d65b}")
     private String apiToken;
 
-    @Value("${postmark.from.email:noreply@indigorx.me}")
+    @Value("${postmark.from.email:info@indigorx.me}")
     private String fromEmail;
 
     @Value("${postmark.from.name:IndigoRx}")
