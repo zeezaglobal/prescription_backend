@@ -129,7 +129,8 @@ public class Subscription {
         ACTIVE,          // Paid subscription active
         PAST_DUE,        // Payment failed, grace period
         CANCELLED,       // Subscription cancelled
-        EXPIRED,         // Trial or subscription expired
+        EXPIRED,
+        PAUSED,// Trial or subscription expired
         PENDING          // Awaiting first payment
     }
 

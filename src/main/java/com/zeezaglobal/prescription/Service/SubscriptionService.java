@@ -29,6 +29,8 @@ public class SubscriptionService {
     private final DoctorRepository doctorRepository;
     private final StripeConfig stripeConfig;
 
+    // ==================== EXISTING METHODS ====================
+
     @Transactional
     public Subscription initializeTrialForDoctor(Doctor doctor) {
         log.info("=== INITIALIZE TRIAL START === Doctor ID: {}, Name: {}", doctor.getId(), doctor.getName());
@@ -249,6 +251,8 @@ public class SubscriptionService {
                 .build();
     }
 
+    // ==================== WEBHOOK HANDLER METHODS ====================
+
     @Transactional
     public void handleCheckoutSessionCompleted(Session session) throws StripeException {
         log.info("========================================");
@@ -289,7 +293,6 @@ public class SubscriptionService {
         log.info("Stripe Subscription Status: {}", stripeSubscription.getStatus());
         log.info("Stripe Subscription Current Period End: {}", stripeSubscription.getCurrentPeriodEnd());
 
-        // Get subscription end date from Stripe
         Long currentPeriodEnd = stripeSubscription.getCurrentPeriodEnd();
         LocalDateTime subscriptionEndDate = currentPeriodEnd != null
                 ? LocalDateTime.ofEpochSecond(currentPeriodEnd, 0, java.time.ZoneOffset.UTC)
@@ -311,13 +314,32 @@ public class SubscriptionService {
         log.info("AFTER UPDATE - Subscription ID: {}, Status: {}, Plan: {}, StripeSubId: {}, StripeCustomerId: {}",
                 saved.getId(), saved.getStatus(), saved.getPlan(),
                 saved.getStripeSubscriptionId(), saved.getStripeCustomerId());
-        log.info("AFTER UPDATE - SubStart: {}, SubEnd: {}, NextBilling: {}",
-                saved.getSubscriptionStartDate(), saved.getSubscriptionEndDate(), saved.getNextBillingDate());
-
         log.info("========================================");
         log.info("=== CHECKOUT SESSION COMPLETED END ===");
-        log.info("=== STATUS SET TO: ACTIVE ===");
         log.info("========================================");
+    }
+
+    @Transactional
+    public void handleSubscriptionCreated(com.stripe.model.Subscription stripeSubscription) {
+        log.info("=== SUBSCRIPTION CREATED START ===");
+        log.info("Stripe Subscription ID: {}", stripeSubscription.getId());
+        log.info("Stripe Customer ID: {}", stripeSubscription.getCustomer());
+        log.info("Stripe Status: {}", stripeSubscription.getStatus());
+
+        // Most of the work is done in checkout.session.completed
+        // This is mainly for logging and ensuring subscription is linked
+        Optional<Subscription> subscriptionOpt = findSubscriptionByStripeData(stripeSubscription);
+
+        if (subscriptionOpt.isPresent()) {
+            Subscription subscription = subscriptionOpt.get();
+            if (subscription.getStripeSubscriptionId() == null) {
+                subscription.setStripeSubscriptionId(stripeSubscription.getId());
+                subscriptionRepository.save(subscription);
+                log.info("Linked Stripe subscription ID to local subscription");
+            }
+        }
+
+        log.info("=== SUBSCRIPTION CREATED END ===");
     }
 
     @Transactional
@@ -333,47 +355,11 @@ public class SubscriptionService {
         log.info("Stripe Subscription ID: {}", subscriptionId);
         log.info("Stripe Customer ID: {}", customerId);
         log.info("Stripe Status: {}", stripeStatus);
-        log.info("Stripe Metadata: {}", stripeSubscription.getMetadata());
 
-        // Try to find by subscription ID first
-        log.info("Attempting to find subscription by Stripe Subscription ID...");
-        Optional<Subscription> subscriptionOpt = subscriptionRepository.findByStripeSubscriptionId(subscriptionId);
-        log.info("Found by subscription ID: {}", subscriptionOpt.isPresent());
-
-        // Fallback: find by customer ID
-        if (subscriptionOpt.isEmpty() && customerId != null) {
-            log.info("Attempting to find subscription by Stripe Customer ID...");
-            subscriptionOpt = subscriptionRepository.findByStripeCustomerId(customerId);
-            log.info("Found by customer ID: {}", subscriptionOpt.isPresent());
-
-            if (subscriptionOpt.isPresent()) {
-                Subscription sub = subscriptionOpt.get();
-                sub.setStripeSubscriptionId(subscriptionId);
-                log.info("Linked Stripe subscription {} to existing customer {}", subscriptionId, customerId);
-            }
-        }
-
-        // Fallback: try to find by metadata doctor_id
-        if (subscriptionOpt.isEmpty()) {
-            String doctorIdStr = stripeSubscription.getMetadata().get("doctor_id");
-            log.info("Attempting to find subscription by doctor_id from metadata: {}", doctorIdStr);
-            if (doctorIdStr != null) {
-                Long doctorId = Long.parseLong(doctorIdStr);
-                subscriptionOpt = subscriptionRepository.findByDoctorId(doctorId);
-                log.info("Found by doctor ID: {}", subscriptionOpt.isPresent());
-
-                if (subscriptionOpt.isPresent()) {
-                    Subscription sub = subscriptionOpt.get();
-                    sub.setStripeSubscriptionId(subscriptionId);
-                    sub.setStripeCustomerId(customerId);
-                    log.info("Linked Stripe subscription {} to doctor {}", subscriptionId, doctorId);
-                }
-            }
-        }
+        Optional<Subscription> subscriptionOpt = findSubscriptionByStripeData(stripeSubscription);
 
         if (subscriptionOpt.isEmpty()) {
             log.warn("NO LOCAL SUBSCRIPTION FOUND! SubscriptionId: {}, CustomerId: {}", subscriptionId, customerId);
-            log.info("=== SUBSCRIPTION UPDATED END (NO ACTION) ===");
             return;
         }
 
@@ -381,84 +367,166 @@ public class SubscriptionService {
         log.info("BEFORE UPDATE - Local Subscription ID: {}, Status: {}, Plan: {}",
                 subscription.getId(), subscription.getStatus(), subscription.getPlan());
 
-        switch (stripeStatus) {
-            case "active":
-                log.info("Setting status to ACTIVE");
-                subscription.setStatus(Subscription.SubscriptionStatus.ACTIVE);
-                subscription.setPlan(Subscription.SubscriptionPlan.YEARLY);
-                if (subscription.getSubscriptionStartDate() == null) {
-                    subscription.setSubscriptionStartDate(LocalDateTime.now());
-                    log.info("Set subscription start date to now");
-                }
-                break;
-            case "trialing":
-                log.info("Stripe status is 'trialing', current local status: {}", subscription.getStatus());
-                if (subscription.getStatus() != Subscription.SubscriptionStatus.TRIAL) {
-                    subscription.setStatus(Subscription.SubscriptionStatus.TRIAL);
-                    log.info("Set status to TRIAL");
-                } else {
-                    log.info("Already in TRIAL status, no change");
-                }
-                break;
-            case "past_due":
-                log.info("Setting status to PAST_DUE");
-                subscription.setStatus(Subscription.SubscriptionStatus.PAST_DUE);
-                break;
-            case "canceled":
-                log.info("Setting status to CANCELLED");
-                subscription.setStatus(Subscription.SubscriptionStatus.CANCELLED);
-                subscription.setCancellationDate(LocalDateTime.now());
-                break;
-            case "unpaid":
-                log.info("Setting status to EXPIRED");
-                subscription.setStatus(Subscription.SubscriptionStatus.EXPIRED);
-                break;
-            default:
-                log.info("Unhandled Stripe subscription status: {}", stripeStatus);
-        }
-
-        Long currentPeriodEnd = stripeSubscription.getCurrentPeriodEnd();
-        if (currentPeriodEnd != null) {
-            LocalDateTime endDate = LocalDateTime.ofEpochSecond(currentPeriodEnd, 0, java.time.ZoneOffset.UTC);
-            subscription.setSubscriptionEndDate(endDate);
-            subscription.setNextBillingDate(endDate);
-            log.info("Set subscription end date and next billing date to: {}", endDate);
-        }
+        // Update subscription end date from Stripe
+        updateSubscriptionDates(subscription, stripeSubscription);
 
         Subscription saved = subscriptionRepository.save(subscription);
         log.info("AFTER UPDATE - Local Subscription ID: {}, Status: {}, Plan: {}",
                 saved.getId(), saved.getStatus(), saved.getPlan());
-        log.info("========================================");
         log.info("=== SUBSCRIPTION UPDATED END ===");
-        log.info("========================================");
     }
 
     @Transactional
-    public void handleSubscriptionDeleted(com.stripe.model.Subscription stripeSubscription) {
-        log.info("=== SUBSCRIPTION DELETED START ===");
+    public void handleSubscriptionActivated(com.stripe.model.Subscription stripeSubscription) {
+        log.info("=== SUBSCRIPTION ACTIVATED START ===");
 
-        String subscriptionId = stripeSubscription.getId();
-        String customerId = stripeSubscription.getCustomer();
-        log.info("Stripe Subscription ID: {}, Customer ID: {}", subscriptionId, customerId);
-
-        Optional<Subscription> subscriptionOpt = subscriptionRepository.findByStripeSubscriptionId(subscriptionId);
-
-        if (subscriptionOpt.isEmpty() && customerId != null) {
-            subscriptionOpt = subscriptionRepository.findByStripeCustomerId(customerId);
+        Optional<Subscription> subscriptionOpt = findSubscriptionByStripeData(stripeSubscription);
+        if (subscriptionOpt.isEmpty()) {
+            log.warn("No local subscription found for activation");
+            return;
         }
 
+        Subscription subscription = subscriptionOpt.get();
+        subscription.setStatus(Subscription.SubscriptionStatus.ACTIVE);
+        subscription.setPlan(Subscription.SubscriptionPlan.YEARLY);
+
+        if (subscription.getSubscriptionStartDate() == null) {
+            subscription.setSubscriptionStartDate(LocalDateTime.now());
+        }
+
+        updateSubscriptionDates(subscription, stripeSubscription);
+        subscriptionRepository.save(subscription);
+
+        log.info("=== SUBSCRIPTION ACTIVATED END === Doctor: {}", subscription.getDoctor().getId());
+    }
+
+    @Transactional
+    public void handleSubscriptionPastDue(com.stripe.model.Subscription stripeSubscription) {
+        log.info("=== SUBSCRIPTION PAST DUE START ===");
+
+        Optional<Subscription> subscriptionOpt = findSubscriptionByStripeData(stripeSubscription);
         if (subscriptionOpt.isEmpty()) {
-            log.warn("No local subscription found for deleted Stripe subscription: {}", subscriptionId);
+            log.warn("No local subscription found for past_due update");
+            return;
+        }
+
+        Subscription subscription = subscriptionOpt.get();
+        subscription.setStatus(Subscription.SubscriptionStatus.PAST_DUE);
+        subscriptionRepository.save(subscription);
+
+        log.info("=== SUBSCRIPTION PAST DUE END === Doctor: {}", subscription.getDoctor().getId());
+    }
+
+    @Transactional
+    public void handleSubscriptionUnpaid(com.stripe.model.Subscription stripeSubscription) {
+        log.info("=== SUBSCRIPTION UNPAID START ===");
+
+        Optional<Subscription> subscriptionOpt = findSubscriptionByStripeData(stripeSubscription);
+        if (subscriptionOpt.isEmpty()) {
+            log.warn("No local subscription found for unpaid update");
+            return;
+        }
+
+        Subscription subscription = subscriptionOpt.get();
+        subscription.setStatus(Subscription.SubscriptionStatus.EXPIRED);
+        subscriptionRepository.save(subscription);
+
+        log.info("=== SUBSCRIPTION UNPAID END === Doctor: {}, Status set to EXPIRED", subscription.getDoctor().getId());
+    }
+
+    @Transactional
+    public void handleSubscriptionCanceled(com.stripe.model.Subscription stripeSubscription) {
+        log.info("=== SUBSCRIPTION CANCELED START ===");
+
+        Optional<Subscription> subscriptionOpt = findSubscriptionByStripeData(stripeSubscription);
+        if (subscriptionOpt.isEmpty()) {
+            log.warn("No local subscription found for cancellation");
             return;
         }
 
         Subscription subscription = subscriptionOpt.get();
         subscription.setStatus(Subscription.SubscriptionStatus.CANCELLED);
         subscription.setCancellationDate(LocalDateTime.now());
-
         subscriptionRepository.save(subscription);
-        log.info("=== SUBSCRIPTION DELETED END === Marked as CANCELLED for doctor {}",
-                subscription.getDoctor().getId());
+
+        log.info("=== SUBSCRIPTION CANCELED END === Doctor: {}", subscription.getDoctor().getId());
+    }
+
+    @Transactional
+    public void handleSubscriptionCancellationScheduled(com.stripe.model.Subscription stripeSubscription) {
+        log.info("=== SUBSCRIPTION CANCELLATION SCHEDULED START ===");
+
+        Optional<Subscription> subscriptionOpt = findSubscriptionByStripeData(stripeSubscription);
+        if (subscriptionOpt.isEmpty()) {
+            log.warn("No local subscription found for cancellation scheduling");
+            return;
+        }
+
+        Subscription subscription = subscriptionOpt.get();
+        // Status stays ACTIVE until actual cancellation
+        // Just record that cancellation is scheduled
+        Long cancelAt = stripeSubscription.getCancelAt();
+        if (cancelAt != null) {
+            LocalDateTime cancelDate = LocalDateTime.ofEpochSecond(cancelAt, 0, java.time.ZoneOffset.UTC);
+            subscription.setSubscriptionEndDate(cancelDate);
+            log.info("Cancellation scheduled for: {}", cancelDate);
+        }
+        subscriptionRepository.save(subscription);
+
+        log.info("=== SUBSCRIPTION CANCELLATION SCHEDULED END === Doctor: {}", subscription.getDoctor().getId());
+    }
+
+    @Transactional
+    public void handleSubscriptionDeleted(com.stripe.model.Subscription stripeSubscription) {
+        log.info("=== SUBSCRIPTION DELETED START ===");
+
+        Optional<Subscription> subscriptionOpt = findSubscriptionByStripeData(stripeSubscription);
+        if (subscriptionOpt.isEmpty()) {
+            log.warn("No local subscription found for deleted Stripe subscription: {}", stripeSubscription.getId());
+            return;
+        }
+
+        Subscription subscription = subscriptionOpt.get();
+        subscription.setStatus(Subscription.SubscriptionStatus.EXPIRED);
+        subscription.setCancellationDate(LocalDateTime.now());
+        subscriptionRepository.save(subscription);
+
+        log.info("=== SUBSCRIPTION DELETED END === Doctor: {}, Status set to EXPIRED", subscription.getDoctor().getId());
+    }
+
+    @Transactional
+    public void handleSubscriptionPaused(com.stripe.model.Subscription stripeSubscription) {
+        log.info("=== SUBSCRIPTION PAUSED START ===");
+
+        Optional<Subscription> subscriptionOpt = findSubscriptionByStripeData(stripeSubscription);
+        if (subscriptionOpt.isEmpty()) {
+            log.warn("No local subscription found for pause");
+            return;
+        }
+
+        Subscription subscription = subscriptionOpt.get();
+        subscription.setStatus(Subscription.SubscriptionStatus.PAUSED);
+        subscriptionRepository.save(subscription);
+
+        log.info("=== SUBSCRIPTION PAUSED END === Doctor: {}", subscription.getDoctor().getId());
+    }
+
+    @Transactional
+    public void handleSubscriptionResumed(com.stripe.model.Subscription stripeSubscription) {
+        log.info("=== SUBSCRIPTION RESUMED START ===");
+
+        Optional<Subscription> subscriptionOpt = findSubscriptionByStripeData(stripeSubscription);
+        if (subscriptionOpt.isEmpty()) {
+            log.warn("No local subscription found for resume");
+            return;
+        }
+
+        Subscription subscription = subscriptionOpt.get();
+        subscription.setStatus(Subscription.SubscriptionStatus.ACTIVE);
+        updateSubscriptionDates(subscription, stripeSubscription);
+        subscriptionRepository.save(subscription);
+
+        log.info("=== SUBSCRIPTION RESUMED END === Doctor: {}", subscription.getDoctor().getId());
     }
 
     @Transactional
@@ -474,22 +542,14 @@ public class SubscriptionService {
         log.info("Subscription ID: {}", subscriptionId);
         log.info("Customer ID: {}", customerId);
         log.info("Amount Paid: {}", invoice.getAmountPaid());
-        log.info("Currency: {}", invoice.getCurrency());
+        log.info("Billing Reason: {}", invoice.getBillingReason());
 
         if (subscriptionId == null) {
             log.info("Invoice has no subscription ID, skipping");
             return;
         }
 
-        log.info("Attempting to find subscription by Stripe Subscription ID...");
-        Optional<Subscription> subscriptionOpt = subscriptionRepository.findByStripeSubscriptionId(subscriptionId);
-        log.info("Found by subscription ID: {}", subscriptionOpt.isPresent());
-
-        if (subscriptionOpt.isEmpty() && customerId != null) {
-            log.info("Attempting to find subscription by Stripe Customer ID...");
-            subscriptionOpt = subscriptionRepository.findByStripeCustomerId(customerId);
-            log.info("Found by customer ID: {}", subscriptionOpt.isPresent());
-        }
+        Optional<Subscription> subscriptionOpt = findSubscriptionByStripeIds(subscriptionId, customerId);
 
         if (subscriptionOpt.isEmpty()) {
             log.warn("NO LOCAL SUBSCRIPTION FOUND! SubscriptionId: {}, CustomerId: {}", subscriptionId, customerId);
@@ -497,13 +557,11 @@ public class SubscriptionService {
         }
 
         Subscription subscription = subscriptionOpt.get();
-        log.info("BEFORE UPDATE - Subscription ID: {}, Status: {}, Plan: {}, StripeSubId: {}",
-                subscription.getId(), subscription.getStatus(), subscription.getPlan(),
-                subscription.getStripeSubscriptionId());
+        log.info("BEFORE UPDATE - Subscription ID: {}, Status: {}", subscription.getId(), subscription.getStatus());
 
+        // Link Stripe subscription ID if not already linked
         if (subscription.getStripeSubscriptionId() == null) {
             subscription.setStripeSubscriptionId(subscriptionId);
-            log.info("Set Stripe subscription ID: {}", subscriptionId);
         }
 
         subscription.setStatus(Subscription.SubscriptionStatus.ACTIVE);
@@ -512,22 +570,26 @@ public class SubscriptionService {
         subscription.setAmountPaid(invoice.getAmountPaid() != null ? invoice.getAmountPaid().intValue() : 0);
         subscription.setCurrency(invoice.getCurrency() != null ? invoice.getCurrency().toUpperCase() : "INR");
 
-        if (subscription.getSubscriptionStartDate() == null) {
+        // For renewal payments, extend the subscription
+        String billingReason = invoice.getBillingReason();
+        if ("subscription_cycle".equals(billingReason)) {
+            // This is a renewal - extend by 1 year from current end date or now
+            LocalDateTime currentEnd = subscription.getSubscriptionEndDate();
+            LocalDateTime newEnd = (currentEnd != null && currentEnd.isAfter(LocalDateTime.now()))
+                    ? currentEnd.plusYears(1)
+                    : LocalDateTime.now().plusYears(1);
+            subscription.setSubscriptionEndDate(newEnd);
+            subscription.setNextBillingDate(newEnd);
+            log.info("Renewal payment - Extended subscription to: {}", newEnd);
+        } else if (subscription.getSubscriptionStartDate() == null) {
             subscription.setSubscriptionStartDate(LocalDateTime.now());
-            log.info("Set subscription start date to now");
-        }
-        if (subscription.getSubscriptionEndDate() == null) {
             subscription.setSubscriptionEndDate(LocalDateTime.now().plusYears(1));
-            log.info("Set subscription end date to 1 year from now");
+            subscription.setNextBillingDate(LocalDateTime.now().plusYears(1));
         }
 
         Subscription saved = subscriptionRepository.save(subscription);
-        log.info("AFTER UPDATE - Subscription ID: {}, Status: {}, Plan: {}",
-                saved.getId(), saved.getStatus(), saved.getPlan());
-        log.info("========================================");
+        log.info("AFTER UPDATE - Subscription ID: {}, Status: {}", saved.getId(), saved.getStatus());
         log.info("=== INVOICE PAYMENT SUCCEEDED END ===");
-        log.info("=== STATUS SET TO: ACTIVE ===");
-        log.info("========================================");
     }
 
     @Transactional
@@ -536,56 +598,74 @@ public class SubscriptionService {
 
         String subscriptionId = invoice.getSubscription();
         String customerId = invoice.getCustomer();
-        log.info("Subscription ID: {}, Customer ID: {}", subscriptionId, customerId);
+        log.info("Subscription ID: {}, Customer ID: {}, Attempt: {}",
+                subscriptionId, customerId, invoice.getAttemptCount());
 
         if (subscriptionId == null) {
             log.info("No subscription ID, skipping");
             return;
         }
 
-        Optional<Subscription> subscriptionOpt = subscriptionRepository.findByStripeSubscriptionId(subscriptionId);
-
-        if (subscriptionOpt.isEmpty() && customerId != null) {
-            subscriptionOpt = subscriptionRepository.findByStripeCustomerId(customerId);
-        }
+        Optional<Subscription> subscriptionOpt = findSubscriptionByStripeIds(subscriptionId, customerId);
 
         if (subscriptionOpt.isEmpty()) {
-            log.warn("No local subscription found for failed invoice. Subscription: {}, Customer: {}",
-                    subscriptionId, customerId);
+            log.warn("No local subscription found for failed invoice");
             return;
         }
 
         Subscription subscription = subscriptionOpt.get();
-        subscription.setStatus(Subscription.SubscriptionStatus.PAST_DUE);
-        subscriptionRepository.save(subscription);
-        log.warn("=== INVOICE PAYMENT FAILED END === Status updated to PAST_DUE for doctor {}",
-                subscription.getDoctor().getId());
+
+        // Only update to PAST_DUE if not already in a worse state
+        if (subscription.getStatus() != Subscription.SubscriptionStatus.EXPIRED &&
+                subscription.getStatus() != Subscription.SubscriptionStatus.CANCELLED) {
+            subscription.setStatus(Subscription.SubscriptionStatus.PAST_DUE);
+            subscriptionRepository.save(subscription);
+        }
+
+        log.info("=== INVOICE PAYMENT FAILED END === Doctor: {}", subscription.getDoctor().getId());
     }
 
     @Transactional
     public void handleTrialWillEnd(com.stripe.model.Subscription stripeSubscription) {
         log.info("=== TRIAL WILL END START ===");
 
-        String subscriptionId = stripeSubscription.getId();
-        String customerId = stripeSubscription.getCustomer();
-
-        Optional<Subscription> subscriptionOpt = subscriptionRepository.findByStripeSubscriptionId(subscriptionId);
-
-        if (subscriptionOpt.isEmpty() && customerId != null) {
-            subscriptionOpt = subscriptionRepository.findByStripeCustomerId(customerId);
-        }
+        Optional<Subscription> subscriptionOpt = findSubscriptionByStripeData(stripeSubscription);
 
         if (subscriptionOpt.isEmpty()) {
-            log.info("Trial ending notification for unknown subscription: {}", subscriptionId);
+            log.info("Trial ending notification for unknown subscription: {}", stripeSubscription.getId());
             return;
         }
 
         Subscription subscription = subscriptionOpt.get();
-        log.info("=== TRIAL WILL END === Trial ending soon for doctor {} - subscription {}",
-                subscription.getDoctor().getId(), subscriptionId);
-
-        // TODO: Send email notification to doctor about trial ending
+        log.info("=== TRIAL WILL END === Trial ending soon for doctor {}", subscription.getDoctor().getId());
+        // Email is sent by the webhook controller
     }
+
+    // ==================== HELPER METHODS FOR EMAIL ====================
+
+    /**
+     * Get doctor email by Stripe customer ID - used by webhook controller for emails
+     */
+    public String getEmailByStripeCustomerId(String stripeCustomerId) {
+        if (stripeCustomerId == null) return null;
+
+        return subscriptionRepository.findByStripeCustomerId(stripeCustomerId)
+                .map(sub -> sub.getDoctor().getEmail())
+                .orElse(null);
+    }
+
+    /**
+     * Get doctor name by Stripe customer ID - used by webhook controller for emails
+     */
+    public String getNameByStripeCustomerId(String stripeCustomerId) {
+        if (stripeCustomerId == null) return null;
+
+        return subscriptionRepository.findByStripeCustomerId(stripeCustomerId)
+                .map(sub -> sub.getDoctor().getName())
+                .orElse(null);
+    }
+
+    // ==================== EXISTING METHODS CONTINUED ====================
 
     @Transactional
     public void cancelSubscription(Long doctorId, SubscriptionDTO.CancelSubscriptionRequest request) throws StripeException {
@@ -647,6 +727,72 @@ public class SubscriptionService {
         LocalDateTime start = LocalDateTime.now();
         LocalDateTime end = LocalDateTime.now().plusDays(daysBeforeExpiry);
         return subscriptionRepository.findTrialsExpiringSoon(Subscription.SubscriptionStatus.TRIAL, start, end);
+    }
+
+    // ==================== PRIVATE HELPER METHODS ====================
+
+    /**
+     * Find subscription by various Stripe identifiers
+     */
+    private Optional<Subscription> findSubscriptionByStripeData(com.stripe.model.Subscription stripeSubscription) {
+        String subscriptionId = stripeSubscription.getId();
+        String customerId = stripeSubscription.getCustomer();
+
+        // Try subscription ID first
+        Optional<Subscription> result = subscriptionRepository.findByStripeSubscriptionId(subscriptionId);
+        if (result.isPresent()) {
+            return result;
+        }
+
+        // Try customer ID
+        if (customerId != null) {
+            result = subscriptionRepository.findByStripeCustomerId(customerId);
+            if (result.isPresent()) {
+                // Link the subscription ID for future lookups
+                Subscription sub = result.get();
+                sub.setStripeSubscriptionId(subscriptionId);
+                return result;
+            }
+        }
+
+        // Try metadata doctor_id
+        String doctorIdStr = stripeSubscription.getMetadata().get("doctor_id");
+        if (doctorIdStr != null) {
+            Long doctorId = Long.parseLong(doctorIdStr);
+            result = subscriptionRepository.findByDoctorId(doctorId);
+            if (result.isPresent()) {
+                Subscription sub = result.get();
+                sub.setStripeSubscriptionId(subscriptionId);
+                sub.setStripeCustomerId(customerId);
+                return result;
+            }
+        }
+
+        return Optional.empty();
+    }
+
+    /**
+     * Find subscription by Stripe subscription ID or customer ID
+     */
+    private Optional<Subscription> findSubscriptionByStripeIds(String subscriptionId, String customerId) {
+        Optional<Subscription> result = subscriptionRepository.findByStripeSubscriptionId(subscriptionId);
+        if (result.isEmpty() && customerId != null) {
+            result = subscriptionRepository.findByStripeCustomerId(customerId);
+        }
+        return result;
+    }
+
+    /**
+     * Update subscription dates from Stripe subscription
+     */
+    private void updateSubscriptionDates(Subscription subscription, com.stripe.model.Subscription stripeSubscription) {
+        Long currentPeriodEnd = stripeSubscription.getCurrentPeriodEnd();
+        if (currentPeriodEnd != null) {
+            LocalDateTime endDate = LocalDateTime.ofEpochSecond(currentPeriodEnd, 0, java.time.ZoneOffset.UTC);
+            subscription.setSubscriptionEndDate(endDate);
+            subscription.setNextBillingDate(endDate);
+            log.info("Updated subscription end date to: {}", endDate);
+        }
     }
 
     private String getOrCreateStripeCustomer(Doctor doctor, Subscription subscription) throws StripeException {
