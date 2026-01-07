@@ -127,6 +127,7 @@ public class SecurityConfig {
 
                         // Protected endpoints - require authentication
                         .requestMatchers("/api/subscriptions/**").hasRole("DOCTOR")
+
                         // Doctor-only endpoints
                         .requestMatchers("/api/doctors/**").hasRole("DOCTOR")
                         .requestMatchers("/api/prescriptions/**").hasAnyRole("DOCTOR", "PATIENT")

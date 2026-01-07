@@ -29,7 +29,9 @@ public class JwtUtil {
         byte[] keyBytes = secretKey.getBytes(StandardCharsets.UTF_8);
         return Keys.hmacShaKeyFor(keyBytes);
     }
-
+    public String extractUserType(String token) {
+        return extractRole(token);
+    }
     // Extract username from token
     public String extractUsername(String token) {
         return extractClaim(token, Claims::getSubject);

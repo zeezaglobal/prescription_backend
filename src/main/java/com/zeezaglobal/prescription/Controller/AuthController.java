@@ -379,9 +379,209 @@ public class AuthController {
         }
     }
 
+
+    // ============================================
+// ADD THIS TO YOUR DoctorController.java
+// ============================================
+
+// Make sure you have these imports at the top:
+// import com.zeezaglobal.prescription.DTO.ChangePasswordDTO;
+// import org.springframework.security.crypto.password.PasswordEncoder;
+
+
+
     /**
-     * Reset password using token
+     * Change password for authenticated doctor
      */
+    @PutMapping("/change-password")
+    public ResponseEntity<Map<String, Object>> changePassword(
+            @RequestBody ChangePasswordDTO request,
+            @RequestHeader("Authorization") String authHeader) {
+
+        Map<String, Object> response = new HashMap<>();
+
+        // === ENTRY LOG ===
+        System.out.println("\n========================================");
+        System.out.println("=== CHANGE PASSWORD ENDPOINT HIT ===");
+        System.out.println("========================================");
+        System.out.println("Timestamp: " + java.time.LocalDateTime.now());
+
+        try {
+            // === AUTH HEADER LOG ===
+            System.out.println("\n--- Authorization Header ---");
+            System.out.println("Auth header present: " + (authHeader != null));
+            System.out.println("Auth header starts with Bearer: " + (authHeader != null && authHeader.startsWith("Bearer ")));
+            if (authHeader != null) {
+                System.out.println("Auth header length: " + authHeader.length());
+            }
+
+            // Extract doctor ID from token
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                System.out.println("ERROR: Invalid authorization header");
+                response.put("success", false);
+                response.put("message", "Invalid authorization header");
+                return new ResponseEntity<>(response, HttpStatus.UNAUTHORIZED);
+            }
+
+            String token = authHeader.substring(7);
+            System.out.println("Token extracted, length: " + token.length());
+            System.out.println("Token first 20 chars: " + token.substring(0, Math.min(20, token.length())) + "...");
+
+            // === JWT EXTRACTION LOG ===
+            System.out.println("\n--- JWT Extraction ---");
+            Long doctorId = null;
+            String username = null;
+            String userType = null;
+
+            try {
+                doctorId = jwtUtil.extractUserId(token);
+                System.out.println("Extracted Doctor ID: " + doctorId);
+            } catch (Exception e) {
+                System.out.println("ERROR extracting userId: " + e.getMessage());
+            }
+
+            try {
+                username = jwtUtil.extractUsername(token);
+                System.out.println("Extracted Username: " + username);
+            } catch (Exception e) {
+                System.out.println("ERROR extracting username: " + e.getMessage());
+            }
+
+            try {
+                userType = jwtUtil.extractUserType(token);
+                System.out.println("Extracted UserType: " + userType);
+            } catch (Exception e) {
+                System.out.println("ERROR extracting userType: " + e.getMessage());
+            }
+
+            // === REQUEST BODY LOG ===
+            System.out.println("\n--- Request Body ---");
+            System.out.println("Request object is null: " + (request == null));
+            if (request != null) {
+                System.out.println("Has currentPassword: " + (request.getCurrentPassword() != null && !request.getCurrentPassword().isEmpty()));
+                System.out.println("Has newPassword: " + (request.getNewPassword() != null && !request.getNewPassword().isEmpty()));
+                System.out.println("Has confirmPassword: " + (request.getConfirmPassword() != null && !request.getConfirmPassword().isEmpty()));
+                if (request.getCurrentPassword() != null) {
+                    System.out.println("currentPassword length: " + request.getCurrentPassword().length());
+                }
+                if (request.getNewPassword() != null) {
+                    System.out.println("newPassword length: " + request.getNewPassword().length());
+                }
+            }
+
+            // Validate input
+            if (request.getCurrentPassword() == null || request.getCurrentPassword().isEmpty()) {
+                System.out.println("VALIDATION ERROR: Current password is required");
+                response.put("success", false);
+                response.put("message", "Current password is required");
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+            }
+
+            if (request.getNewPassword() == null || request.getNewPassword().isEmpty()) {
+                System.out.println("VALIDATION ERROR: New password is required");
+                response.put("success", false);
+                response.put("message", "New password is required");
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+            }
+
+            if (request.getConfirmPassword() == null || request.getConfirmPassword().isEmpty()) {
+                System.out.println("VALIDATION ERROR: Confirm password is required");
+                response.put("success", false);
+                response.put("message", "Please confirm your new password");
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+            }
+
+            // Check if passwords match
+            if (!request.getNewPassword().equals(request.getConfirmPassword())) {
+                System.out.println("VALIDATION ERROR: New passwords do not match");
+                response.put("success", false);
+                response.put("message", "New passwords do not match");
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+            }
+
+            // Validate password strength
+            System.out.println("\n--- Password Strength Validation ---");
+            String passwordError = validatePasswordStrength(request.getNewPassword());
+            if (passwordError != null) {
+                System.out.println("VALIDATION ERROR: " + passwordError);
+                response.put("success", false);
+                response.put("message", passwordError);
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+            }
+            System.out.println("Password strength: OK");
+
+            // === DATABASE LOOKUP LOG ===
+            System.out.println("\n--- Database Lookup ---");
+            System.out.println("Looking up doctor with ID: " + doctorId);
+
+            Doctor doctor = doctorRepository.findById(doctorId)
+                    .orElseThrow(() -> {
+
+                        return new RuntimeException("Doctor not found");
+                    });
+
+            System.out.println("Doctor found!");
+            System.out.println("Doctor username: " + doctor.getUsername());
+            System.out.println("Doctor email: " + doctor.getEmail());
+
+            // === PASSWORD VERIFICATION LOG ===
+            System.out.println("\n--- Password Verification ---");
+            boolean currentPasswordMatches = passwordEncoder.matches(request.getCurrentPassword(), doctor.getPassword());
+            System.out.println("Current password matches: " + currentPasswordMatches);
+
+            if (!currentPasswordMatches) {
+                System.out.println("ERROR: Current password is incorrect");
+                response.put("success", false);
+                response.put("message", "Current password is incorrect");
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+            }
+
+            // Check if new password is same as current
+            boolean newPasswordSameAsCurrent = passwordEncoder.matches(request.getNewPassword(), doctor.getPassword());
+            System.out.println("New password same as current: " + newPasswordSameAsCurrent);
+
+            if (newPasswordSameAsCurrent) {
+                System.out.println("ERROR: New password must be different from current password");
+                response.put("success", false);
+                response.put("message", "New password must be different from current password");
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+            }
+
+            // === UPDATE PASSWORD ===
+            System.out.println("\n--- Updating Password ---");
+            String encodedNewPassword = passwordEncoder.encode(request.getNewPassword());
+            System.out.println("New password encoded, length: " + encodedNewPassword.length());
+
+            doctor.setPassword(encodedNewPassword);
+            doctorRepository.save(doctor);
+
+            System.out.println("Password saved to database!");
+            System.out.println("\n========================================");
+            System.out.println("=== PASSWORD CHANGED SUCCESSFULLY ===");
+            System.out.println("Doctor ID: " + doctorId);
+            System.out.println("========================================\n");
+
+            response.put("success", true);
+            response.put("message", "Password changed successfully");
+            return new ResponseEntity<>(response, HttpStatus.OK);
+
+        } catch (Exception e) {
+            System.out.println("\n========================================");
+            System.out.println("=== EXCEPTION OCCURRED ===");
+            System.out.println("========================================");
+            System.out.println("Exception type: " + e.getClass().getName());
+            System.out.println("Exception message: " + e.getMessage());
+            System.out.println("Stack trace:");
+            e.printStackTrace();
+            System.out.println("========================================\n");
+
+            response.put("success", false);
+            response.put("message", "An error occurred while changing password. Please try again.");
+            return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+
     @PostMapping("/reset-password")
     public ResponseEntity<Map<String, Object>> resetPassword(@RequestBody ResetPasswordDTO request) {
         Map<String, Object> response = new HashMap<>();
