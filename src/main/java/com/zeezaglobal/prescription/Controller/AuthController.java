@@ -91,7 +91,6 @@ public class AuthController {
         Map<String, Object> response = new HashMap<>();
 
         try {
-            // Validate input
             if (request.getEmail() == null || request.getEmail().isEmpty()) {
                 response.put("success", false);
                 response.put("message", "Email is required");
@@ -110,7 +109,6 @@ public class AuthController {
                 return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
             }
 
-            // Validate password strength
             String passwordError = validatePasswordStrength(request.getPassword());
             if (passwordError != null) {
                 response.put("success", false);
@@ -118,7 +116,6 @@ public class AuthController {
                 return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
             }
 
-            // Check if email already exists
             if (userRepository.existsByUsername(request.getEmail())) {
                 response.put("success", false);
                 response.put("message", "An account with this email already exists");
@@ -131,31 +128,50 @@ public class AuthController {
                 return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
             }
 
-            // Store pending registration
-            PendingDoctorRegistration pending = new PendingDoctorRegistration();
-            pending.setEmail(request.getEmail());
-            pending.setPassword(request.getPassword());
-            pending.setCreatedAt(System.currentTimeMillis());
-            pendingRegistrations.put(request.getEmail(), pending);
+            // Create the doctor account directly (OTP bypassed)
+            Doctor doctor = new Doctor();
+            doctor.setUsername(request.getEmail());
+            doctor.setEmail(request.getEmail());
+            doctor.setPassword(passwordEncoder.encode(request.getPassword()));
+            doctor.setName("");
+            doctor.setLicenseNumber("PENDING-" + System.currentTimeMillis());
+            doctor.setSpecialization("");
+            doctor.setPhone("");
+            doctor.setValidated(0);
+            doctor.setEmailVerified(true);
+            doctor.setStatus(Doctor.DoctorStatus.ACTIVE);
 
-            // Generate and send OTP
-            OtpService.OtpResult otpResult = otpService.generateAndSendOtp(
-                    request.getEmail(),
-                    OtpVerification.OtpType.EMAIL_VERIFICATION,
-                    null
+            try {
+                String customerId = stripeService.createCustomer(request.getEmail());
+                doctor.setStripeUsername(customerId);
+            } catch (StripeException e) {
+                logger.error("Failed to create Stripe customer: {}", e.getMessage());
+            }
+
+            Doctor savedDoctor = doctorRepository.save(doctor);
+
+            String token = jwtUtil.generateToken(
+                    savedDoctor.getUsername(),
+                    savedDoctor.getId(),
+                    "DOCTOR"
             );
 
-            if (otpResult.isSuccess()) {
-                response.put("success", true);
-                response.put("message", "Verification code sent to your email");
-                response.put("email", request.getEmail());
-                response.put("requiresVerification", true);
-                return new ResponseEntity<>(response, HttpStatus.OK);
-            } else {
-                response.put("success", false);
-                response.put("message", otpResult.getMessage());
-                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
-            }
+            emailService.sendWelcomeEmail(savedDoctor.getEmail(), savedDoctor.getName());
+
+            Map<String, Object> userMap = new HashMap<>();
+            userMap.put("id", savedDoctor.getId());
+            userMap.put("email", savedDoctor.getEmail());
+            userMap.put("username", savedDoctor.getUsername());
+            userMap.put("userType", "DOCTOR");
+            userMap.put("profileComplete", false);
+            userMap.put("emailVerified", true);
+
+            response.put("success", true);
+            response.put("message", "Registration successful! Welcome to IndigoRx.");
+            response.put("token", token);
+            response.put("user", userMap);
+
+            return new ResponseEntity<>(response, HttpStatus.CREATED);
 
         } catch (Exception e) {
             logger.error("Error during doctor registration: {}", e.getMessage(), e);
@@ -164,7 +180,6 @@ public class AuthController {
             return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
-
     /**
      * Step 2: Verify OTP and complete registration
      */
