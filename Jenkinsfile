@@ -16,13 +16,13 @@ pipeline {
 
         stage('Build') {
             steps {
-                sh './mvnw clean package -DskipTests'
+                sh 'mvn clean package -DskipTests'
             }
         }
 
         stage('Test') {
             steps {
-                sh './mvnw test'
+                sh 'mvn test'
             }
             post {
                 always {
