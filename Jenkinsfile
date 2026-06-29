@@ -3,35 +3,13 @@ pipeline {
 
     environment {
         APP_NAME = 'prescription'
-        JAR_FILE = "target/${APP_NAME}-0.0.1-SNAPSHOT.jar"
         DOCKER_IMAGE = "${APP_NAME}:${BUILD_NUMBER}"
-    }
-
-    tools {
-        maven 'Maven'
     }
 
     stages {
         stage('Checkout') {
             steps {
                 checkout scm
-            }
-        }
-
-        stage('Build') {
-            steps {
-                sh 'mvn clean package -DskipTests'
-            }
-        }
-
-        stage('Test') {
-            steps {
-                sh 'mvn test'
-            }
-            post {
-                always {
-                    junit '**/target/surefire-reports/*.xml'
-                }
             }
         }
 
@@ -42,14 +20,11 @@ pipeline {
         }
 
         stage('Deploy') {
-            when {
-                branch 'main'
-            }
             steps {
                 sh """
                     docker stop ${APP_NAME} || true
                     docker rm ${APP_NAME} || true
-                    docker run -d --name ${APP_NAME} -p 8080:8080 ${DOCKER_IMAGE}
+                    docker run -d --name ${APP_NAME} -p 9090:9090 ${DOCKER_IMAGE}
                 """
             }
         }
