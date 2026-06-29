@@ -8,6 +8,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 
 import java.security.Security;
 
+
 @SpringBootApplication
 @EnableScheduling
 public class PrescriptionApplication {
