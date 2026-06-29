@@ -7,11 +7,6 @@ pipeline {
         DOCKER_IMAGE = "${APP_NAME}:${BUILD_NUMBER}"
     }
 
-    tools {
-        maven 'Maven 3'
-        jdk 'JDK 21'
-    }
-
     stages {
         stage('Checkout') {
             steps {
