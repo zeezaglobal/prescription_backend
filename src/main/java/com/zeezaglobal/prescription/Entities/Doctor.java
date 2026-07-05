@@ -46,9 +46,6 @@ public class Doctor extends User {
     @Column(name = "hospital_name")
     private String hospitalName;
 
-    @Column(name = "stripe_username")
-    private String stripeUsername;
-
     @Column(name = "validated")
     private Integer validated = 0; // 0 = not validated, 1 = validated
 

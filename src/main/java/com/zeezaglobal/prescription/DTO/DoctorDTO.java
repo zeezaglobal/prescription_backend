@@ -15,5 +15,4 @@ public class DoctorDTO {
     private String licenseNumber;
     private String hospitalName; // Kept for backward compatibility
     private String contactNumber; // Maps to phone in entity
-    private String stripeUsername; // Kept for backward compatibility
 }

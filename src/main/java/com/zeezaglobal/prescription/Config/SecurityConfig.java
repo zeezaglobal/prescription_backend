@@ -120,13 +120,6 @@ public class SecurityConfig {
                         .requestMatchers("/auth/forgot-password").permitAll()
                         .requestMatchers("/auth/reset-password/validate").permitAll()
                         .requestMatchers("/auth/reset-password").permitAll()
-                        .requestMatchers("/api/subscription/pricing").permitAll()
-                        .requestMatchers("/api/webhooks/**").permitAll()
-
-
-
-                        // Protected endpoints - require authentication
-                        .requestMatchers("/api/subscriptions/**").hasRole("DOCTOR")
 
                         // Doctor-only endpoints
                         .requestMatchers("/api/doctors/**").hasRole("DOCTOR")

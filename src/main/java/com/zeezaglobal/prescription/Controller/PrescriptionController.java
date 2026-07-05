@@ -1,7 +1,6 @@
 package com.zeezaglobal.prescription.Controller;
 
 
-import com.zeezaglobal.prescription.Annotation.RequiresActiveSubscription;
 import com.zeezaglobal.prescription.DTO.CreatePrescriptionDTO;
 import com.zeezaglobal.prescription.DTO.PrescriptionResponseDTO;
 import com.zeezaglobal.prescription.DTO.UpdatePrescriptionStatusDTO;
@@ -38,7 +37,6 @@ public class PrescriptionController {
 
     @PostMapping
     @PreAuthorize("hasRole('DOCTOR')")
-    @RequiresActiveSubscription
     public ResponseEntity<?> createPrescription(
             @RequestBody CreatePrescriptionDTO dto,
             @RequestHeader("Authorization") String authHeader) {

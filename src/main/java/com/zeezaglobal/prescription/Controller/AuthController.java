@@ -1,6 +1,5 @@
 package com.zeezaglobal.prescription.Controller;
 
-import com.stripe.exception.StripeException;
 import com.zeezaglobal.prescription.DTO.*;
 import com.zeezaglobal.prescription.DTO.OtpDto.ForgotPasswordDTO;
 import com.zeezaglobal.prescription.DTO.OtpDto.OtpVerificationDTO;
@@ -18,7 +17,6 @@ import com.zeezaglobal.prescription.Repository.UserRepository;
 import com.zeezaglobal.prescription.Service.OtpService;
 import com.zeezaglobal.prescription.Service.PasswordResetService;
 import com.zeezaglobal.prescription.Service.PostmarkEmailService;
-import com.zeezaglobal.prescription.Service.StripeService;
 import com.zeezaglobal.prescription.Utils.JwtUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -65,9 +63,6 @@ public class AuthController {
 
     @Autowired
     private UserDetailsService userDetailsService;
-
-    @Autowired
-    private StripeService stripeService;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -140,13 +135,6 @@ public class AuthController {
             doctor.setValidated(0);
             doctor.setEmailVerified(true);
             doctor.setStatus(Doctor.DoctorStatus.ACTIVE);
-
-            try {
-                String customerId = stripeService.createCustomer(request.getEmail());
-                doctor.setStripeUsername(customerId);
-            } catch (StripeException e) {
-                logger.error("Failed to create Stripe customer: {}", e.getMessage());
-            }
 
             Doctor savedDoctor = doctorRepository.save(doctor);
 
@@ -246,14 +234,6 @@ public class AuthController {
             doctor.setValidated(0);
             doctor.setEmailVerified(true);
             doctor.setStatus(Doctor.DoctorStatus.ACTIVE);
-
-            // Create Stripe customer
-            try {
-                String customerId = stripeService.createCustomer(pending.getEmail());
-                doctor.setStripeUsername(customerId);
-            } catch (StripeException e) {
-                logger.error("Failed to create Stripe customer: {}", e.getMessage());
-            }
 
             // Save doctor
             Doctor savedDoctor = doctorRepository.save(doctor);
