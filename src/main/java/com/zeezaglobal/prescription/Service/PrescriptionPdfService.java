@@ -58,7 +58,7 @@ public class PrescriptionPdfService {
     @Value("${pdf.keystore.password:changeit}")
     private String keystorePassword;
 
-    private static final DeviceRgb PRIMARY_COLOR = new DeviceRgb(37, 99, 235);
+    private static final DeviceRgb PRIMARY_COLOR = new DeviceRgb(15, 118, 110);
     private static final DeviceRgb SECONDARY_COLOR = new DeviceRgb(100, 116, 139);
     private static final DeviceRgb LIGHT_GRAY = new DeviceRgb(241, 245, 249);
 
@@ -175,11 +175,17 @@ public class PrescriptionPdfService {
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MMMM dd, yyyy");
         String patientFullName = patientInfo.getFirstName() + " " + patientInfo.getLastName();
 
-        // Calculate age if DOB is available
+        // Calculate age (years and months) if DOB is available
         String ageInfo = "";
         if (patientInfo.getDateOfBirth() != null) {
-            int age = Period.between(patientInfo.getDateOfBirth(), LocalDate.now()).getYears();
-            ageInfo = " (Age: " + age + ")";
+            Period agePeriod = Period.between(patientInfo.getDateOfBirth(), LocalDate.now());
+            int years = agePeriod.getYears();
+            int months = agePeriod.getMonths();
+            if (years > 0) {
+                ageInfo = " (Age: " + years + "y " + months + "m)";
+            } else {
+                ageInfo = " (Age: " + months + "m)";
+            }
         }
 
         Cell leftCell = new Cell()
@@ -457,11 +463,11 @@ public class PrescriptionPdfService {
         g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 
         // Background - light professional look
-        g2d.setColor(new Color(240, 248, 255));
+        g2d.setColor(new Color(240, 253, 250));
         g2d.fillRect(0, 0, width, height);
 
-        // Border - blue professional border
-        g2d.setColor(new Color(37, 99, 235));
+        // Border - teal professional border
+        g2d.setColor(new Color(15, 118, 110));
         g2d.setStroke(new BasicStroke(2));
         g2d.drawRect(1, 1, width - 3, height - 3);
 
@@ -496,7 +502,7 @@ public class PrescriptionPdfService {
         g2d.drawString(specialization, 10, 103);
 
         // "IndigoRx Verified" text
-        g2d.setColor(new Color(37, 99, 235));
+        g2d.setColor(new Color(15, 118, 110));
         g2d.setFont(new Font("Arial", Font.BOLD, 10));
         g2d.drawString("IndigoRx Verified Prescription", 10, 125);
 
