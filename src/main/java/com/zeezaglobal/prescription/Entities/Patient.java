@@ -22,8 +22,11 @@ public class Patient extends User {
     @Column(nullable = false)
     private String name;
 
-    @Column(nullable = false)
+    @Column
     private LocalDate dateOfBirth;
+
+    @Column
+    private Integer age;
 
     @Column(nullable = false)
     private String gender;
@@ -64,12 +67,12 @@ public class Patient extends User {
         }
     }
 
-    // Calculate age from date of birth
+    // Age is derived from date of birth when available, otherwise the directly-entered value is used
     public Integer getAge() {
-        if (dateOfBirth == null) {
-            return null;
+        if (dateOfBirth != null) {
+            return Period.between(dateOfBirth, LocalDate.now()).getYears();
         }
-        return Period.between(dateOfBirth, LocalDate.now()).getYears();
+        return age;
     }
 
     // Helper methods for backward compatibility

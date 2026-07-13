@@ -175,7 +175,7 @@ public class PrescriptionPdfService {
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MMMM dd, yyyy");
         String patientFullName = patientInfo.getFirstName() + " " + patientInfo.getLastName();
 
-        // Calculate age (years and months) if DOB is available
+        // Calculate age (years and months) from DOB if available, otherwise fall back to the directly-entered age
         String ageInfo = "";
         if (patientInfo.getDateOfBirth() != null) {
             Period agePeriod = Period.between(patientInfo.getDateOfBirth(), LocalDate.now());
@@ -186,6 +186,8 @@ public class PrescriptionPdfService {
             } else {
                 ageInfo = " (Age: " + months + "m)";
             }
+        } else if (patientInfo.getAge() != null) {
+            ageInfo = " (Age: " + patientInfo.getAge() + "y)";
         }
 
         Cell leftCell = new Cell()

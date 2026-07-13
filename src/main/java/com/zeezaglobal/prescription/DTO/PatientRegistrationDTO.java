@@ -9,6 +9,7 @@ public class PatientRegistrationDTO {
     private String password;
     private String name;
     private LocalDate dateOfBirth;
+    private Integer age;
     private String gender;
     private String phone;
     private String email;

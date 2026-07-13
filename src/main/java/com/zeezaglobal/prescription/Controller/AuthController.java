@@ -647,6 +647,7 @@ public class AuthController {
             patient.setPassword(passwordEncoder.encode(request.getPassword()));
             patient.setName(request.getName());
             patient.setDateOfBirth(request.getDateOfBirth());
+            patient.setAge(request.getAge());
             patient.setGender(request.getGender());
             patient.setPhone(request.getPhone());
             patient.setEmail(request.getEmail());

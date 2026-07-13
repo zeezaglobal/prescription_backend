@@ -40,6 +40,7 @@ public class PrescriptionResponseDTO {
         private String email;
         private String phone;
         private LocalDate dateOfBirth;
+        private Integer age;
     }
 
     @Data
@@ -95,6 +96,7 @@ public class PrescriptionResponseDTO {
         patientDTO.setEmail(prescription.getPatient().getEmail());
         patientDTO.setPhone(prescription.getPatient().getPhone());
         patientDTO.setDateOfBirth(prescription.getPatient().getDateOfBirth());
+        patientDTO.setAge(prescription.getPatient().getAge());
         dto.setPatient(patientDTO);
 
         // Doctor info

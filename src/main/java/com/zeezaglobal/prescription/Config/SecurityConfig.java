@@ -121,6 +121,7 @@ public class SecurityConfig {
                         .requestMatchers("/auth/reset-password/validate").permitAll()
                         .requestMatchers("/auth/reset-password").permitAll()
                         .requestMatchers("/api/drugs/**").permitAll()
+                        .requestMatchers("/api/articles/**").permitAll()
 
                         // Doctor-only endpoints
                         .requestMatchers("/api/doctors/**").hasRole("DOCTOR")
