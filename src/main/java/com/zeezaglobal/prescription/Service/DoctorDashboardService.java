@@ -44,6 +44,7 @@ public class DoctorDashboardService {
                 .recentPatients(getRecentPatients(doctorId, 5))
                 .recentPrescriptions(getRecentPrescriptions(doctorId, 5))
                 .patientTrend(getPatientTrend(doctorId, 6))
+                .patientsPerDay(getPatientsPerDay(doctorId, 7))
                 .build();
     }
 
@@ -122,6 +123,27 @@ public class DoctorDashboardService {
             trend.add(DoctorDashboardDTO.PatientsByMonth.builder()
                     .month(month.getMonth().getDisplayName(TextStyle.SHORT, Locale.ENGLISH))
                     .year(month.getYear())
+                    .count(count)
+                    .build());
+        }
+
+        return trend;
+    }
+
+    private List<DoctorDashboardDTO.PatientsByDay> getPatientsPerDay(Long doctorId, int days) {
+        List<DoctorDashboardDTO.PatientsByDay> trend = new ArrayList<>();
+        LocalDate today = LocalDate.now();
+
+        for (int i = days - 1; i >= 0; i--) {
+            LocalDate day = today.minusDays(i);
+            LocalDateTime startOfDay = day.atStartOfDay();
+            LocalDateTime endOfDay = day.atTime(LocalTime.MAX);
+
+            long count = patientRepository.countByDoctorIdAndCreatedAtBetween(doctorId, startOfDay, endOfDay);
+
+            trend.add(DoctorDashboardDTO.PatientsByDay.builder()
+                    .date(day.toString())
+                    .day(day.getDayOfWeek().getDisplayName(TextStyle.SHORT, Locale.ENGLISH))
                     .count(count)
                     .build());
         }

@@ -32,6 +32,7 @@ public class DoctorDashboardDTO {
 
     // Quick insights
     private List<PatientsByMonth> patientTrend;
+    private List<PatientsByDay> patientsPerDay;
 
     @Data
     @Builder
@@ -82,6 +83,16 @@ public class DoctorDashboardDTO {
     public static class PatientsByMonth {
         private String month;
         private int year;
+        private long count;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class PatientsByDay {
+        private String date;
+        private String day;
         private long count;
     }
 }
