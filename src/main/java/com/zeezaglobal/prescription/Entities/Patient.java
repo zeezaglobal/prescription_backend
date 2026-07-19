@@ -31,7 +31,7 @@ public class Patient extends User {
     @Column(nullable = false)
     private String gender;
 
-    @Column(nullable = false)
+    @Column
     private String phone;
 
     @Column
